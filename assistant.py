@@ -15,6 +15,7 @@ console = Console()
 stt = whisper.load_model("base.en")
 tts = TextToSpeechService()
 
+# Define the prompt template for the LLM
 template = """
 You are an AI assistant, striving to be helpful, friendly, and provide concise responses within 20 words.
 Here is our conversation transcript:
@@ -34,6 +35,7 @@ chain = ConversationChain(
 
 
 def record_audio(stop_event, data_queue):
+    """Records audio from the microphone and puts it in a queue."""
     def callback(indata, _, _, status):
         if status:
             console.print(status)
@@ -47,12 +49,14 @@ def record_audio(stop_event, data_queue):
 
 
 def transcribe(audio_np: np.ndarray) -> str:
+    """Transcribes audio data to text using Whisper model."""
     result = stt.transcribe(audio_np, fp16=False)
     text = result["text"].strip()
     return text
 
 
 def get_llm_response(text: str) -> str:
+    """Generates a response from the LLM based on the input text."""
     response = chain.predict(input=text)
     if response.startswith("Assistant:"):
         response = response[len("Assistant:") :].strip()
@@ -60,11 +64,13 @@ def get_llm_response(text: str) -> str:
 
 
 def play_audio(sample_rate, audio_array):
+    """Plays the synthesized audio response."""
     sd.play(audio_array, sample_rate)
     sd.wait()
 
 
-if __name__ == "__main__":
+def main():
+    """Main function to manage the recording, transcription, and response generation."""
     console.print("[cyan]Assistant started! Press Ctrl+C to exit.")
 
     try:
@@ -110,3 +116,7 @@ if __name__ == "__main__":
         console.print("\n[red]Exiting...")
 
     console.print("[blue]Session ended.")
+
+
+if __name__ == "__main__":
+    main()
