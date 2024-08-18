@@ -11,7 +11,6 @@ from langchain.prompts import PromptTemplate
 from langchain_community.llms import Ollama
 from tts import TextToSpeechService
 
-
 # Libraries used:
 # - time: For handling time-related tasks such as sleeping.
 # - threading: For running tasks in separate threads.
@@ -31,9 +30,9 @@ console = Console()
 stt = whisper.load_model("base.en")
 tts = TextToSpeechService()
 
+# Template for conversation transcript and user's follow-up
 template = """
-You are an AI assistant, You strive to be helpful, friendly, and provide concise responses within 20 words. with a goal to provide accurate and useful information in a concise manner.
-
+You are an AI assistant, striving to be helpful, friendly, and provide concise responses within 20 words.
 Here is our conversation transcript:
 {history}
 
@@ -128,22 +127,22 @@ if __name__ == "__main__":
                 "Press Enter to start recording, then press Enter again to stop."
             )
 
-            data_queue = Queue()  # type: ignore[var-annotated]
-            stop_event = threading.Event()
+            data_queue = Queue()  # Queue to store recorded audio data
+            stop_event = threading.Event()  # Event to signal stop recording
             recording_thread = threading.Thread(
                 target=record_audio,
                 args=(stop_event, data_queue),
             )
             recording_thread.start()
 
-            input()
-            stop_event.set()
-            recording_thread.join()
+            input()  # Wait for user to press Enter to stop recording
+            stop_event.set()  # Signal stop recording
+            recording_thread.join()  # Wait for recording thread to finish
 
-            audio_data = b"".join(list(data_queue.queue))
+            audio_data = b"".join(list(data_queue.queue))  # Combine recorded audio data
             audio_np = (
                 np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            )
+            )  # Convert audio data to numpy array
 
             if audio_np.size > 0:
                 with console.status("Transcribing...", spinner="earth"):
@@ -165,20 +164,3 @@ if __name__ == "__main__":
         console.print("\n[red]Exiting...")
 
     console.print("[blue]Session ended.")
-
-    stop_event = threading.Event()
-    data_queue = Queue()
-
-    # Start the audio recording in a separate thread
-    recording_thread = threading.Thread(target=record_audio, args=(stop_event, data_queue))
-    recording_thread.start()
-
-    try:
-        # Simulate recording for 10 seconds
-        time.sleep(10)
-    finally:
-        # Signal the recording thread to stop and wait for it to finish
-        stop_event.set()
-        recording_thread.join()
-
-    console.log("Recording stopped.")
