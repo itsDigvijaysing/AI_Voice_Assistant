@@ -293,7 +293,14 @@ class MCPManager:
                 "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
                 "XDG_CURRENT_DESKTOP", "XAUTHORITY",
             )
-            env = {**{k: os.environ[k] for k in _GUI_ENV if k in os.environ}, **(config.env or {})}
+            # Secrets an individual server reads from its own process env (e.g. todoist_server's
+            # TODOIST_API_TOKEN) — same scrubbing problem as the GUI vars above, so they need the
+            # same explicit passthrough. Never put a real secret in config.env (that's a committed file).
+            _PASSTHROUGH_ENV = ("TODOIST_API_TOKEN",)
+            env = {
+                **{k: os.environ[k] for k in (*_GUI_ENV, *_PASSTHROUGH_ENV) if k in os.environ},
+                **(config.env or {}),
+            }
             params = StdioServerParameters(command=config.command, args=config.args, env=(env or None))
             # Suppress subprocess stderr to prevent MCP logs from corrupting TUI
             return stdio_client(params, errlog=subprocess.DEVNULL)
