@@ -3,7 +3,6 @@ import json
 import queue
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Any, Callable
 
 from loguru import logger
@@ -18,6 +17,44 @@ _SHELL_RESULT_PREFIXES = ("mcp.shell.", "mcp.skills_actions.")  # tools whose re
 
 # Callback signature: (event_type: str, tool_name: str) -> None
 ToolEventCallback = Callable[[str, str], None]
+
+
+class _SingleAnswerQueue:
+    """Wrap the LLM queue for ONE built-in tool dispatch so only the FIRST ``tool``-role message
+    for ``tool_call_id`` is forwarded.
+
+    A built-in that TIMES OUT is abandoned (we can't kill the thread), but it may still finish later
+    and enqueue its own result — a SECOND ``tool`` message for the same id, which strict
+    OpenAI-compatible endpoints reject and Ollama finds confusing. Routing both the tool's own put
+    and the executor's error/timeout put through this guard drops that late duplicate. Everything
+    that is not a duplicate ``tool`` answer passes straight through to the base queue unchanged.
+    """
+
+    def __init__(self, base: "queue.Queue[dict[str, Any]]", tool_call_id: str) -> None:
+        self._base = base
+        self._id = tool_call_id
+        self._answered = False
+        self._lock = threading.Lock()
+
+    def _claim(self, item: Any) -> bool:
+        """True if this item may be forwarded; False if it is a duplicate answer to drop."""
+        if isinstance(item, dict) and item.get("role") == "tool" and item.get("tool_call_id") == self._id:
+            with self._lock:
+                if self._answered:
+                    return False
+                self._answered = True
+        return True
+
+    def put(self, item: dict[str, Any]) -> None:
+        if self._claim(item):
+            self._base.put(item)
+
+    def put_nowait(self, item: dict[str, Any]) -> None:
+        if self._claim(item):
+            self._base.put_nowait(item)
+
+    def __getattr__(self, name: str) -> Any:  # stay transparent for any other queue method a tool uses
+        return getattr(self._base, name)
 
 
 class ToolExecutor:
@@ -57,6 +94,56 @@ class ToolExecutor:
         """Emit a tool event to the callback if registered."""
         if self._on_tool_event:
             self._on_tool_event(event_type, tool_name)
+
+    def _fail(
+        self,
+        target_queue: "queue.Queue[dict[str, Any]]",
+        tool: str,
+        tool_call_id: str,
+        message: str,
+        lane: str,
+        autonomy_flag: dict[str, Any],
+        *,
+        event: str | None = "tool_failure",
+        kind: str = "error",
+        level: str = "error",
+        detail: str | None = None,
+        args: dict[str, Any] | None = None,
+        meta_extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Report a refused/failed/timed-out tool call in ONE place: log, tool event, feedback record,
+        observability, and — always — a ``tool`` answer so the assistant's tool_call never dangles.
+
+        ``detail=None`` skips the self-improvement record (a timeout is not a command outcome);
+        ``event=None`` skips the UI tool event (paths that never had one).
+        """
+        (logger.warning if level == "warning" else logger.error)(f"ToolExecutor: {message}")
+        if event:
+            self._emit_tool_event(event, tool)
+        if detail is not None and tool.startswith(_ACTION_PREFIXES):
+            skills_feedback.record(tool, args or {}, ok=False, detail=detail)
+        if self._observability_bus:
+            meta: dict[str, Any] = {"tool": tool, "tool_call_id": tool_call_id}
+            if meta_extra:
+                meta.update(meta_extra)
+            self._observability_bus.emit(
+                source="tool",
+                kind=kind,
+                message=trim_message(message),
+                level=level,
+                meta=meta,
+            )
+        self._enqueue(
+            target_queue,
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": message,
+                "type": "function_call_output",
+                **autonomy_flag,
+            },
+            lane=lane,
+        )
 
     def run(self) -> None:
         """
@@ -125,53 +212,18 @@ class ToolExecutor:
                         f"error: tool '{tool}' is blocked by the safety gate "
                         "(set GLADOS_ALLOW_ACTIONS=1 to enable gated actions; autonomy is always blocked)"
                     )
-                    logger.warning("ToolExecutor: {}", rejection)
-                    if self._observability_bus:
-                        self._observability_bus.emit(
-                            source="tool",
-                            kind="error",
-                            message=rejection,
-                            level="warning",
-                            meta={"tool": tool, "tool_call_id": tool_call_id, "rejected": True},
-                        )
-                    self._emit_tool_event("tool_rejected", tool)
-                    if tool.startswith(_ACTION_PREFIXES):
-                        skills_feedback.record(tool, args, ok=False, detail="gate-denied")
-                    self._enqueue(
-                        llm_queue,
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "content": rejection,
-                            "type": "function_call_output",
-                            **autonomy_flag,
-                        },
-                        lane=lane,
+                    self._fail(
+                        llm_queue, tool, tool_call_id, rejection, lane, autonomy_flag,
+                        event="tool_rejected", level="warning",
+                        detail="gate-denied", args=args, meta_extra={"rejected": True},
                     )
                     continue
 
                 if tool.startswith("mcp."):
                     if not self.mcp_manager:
-                        tool_error = "error: MCP tools are unavailable"
-                        logger.error(f"ToolExecutor: {tool_error}")
-                        if self._observability_bus:
-                            self._observability_bus.emit(
-                                source="tool",
-                                kind="error",
-                                message=tool_error,
-                                level="error",
-                                meta={"tool": tool, "tool_call_id": tool_call_id},
-                            )
-                        self._enqueue(
-                            llm_queue,
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call_id,
-                                "content": tool_error,
-                                "type": "function_call_output",
-                                **autonomy_flag,
-                            },
-                            lane=lane,
+                        self._fail(
+                            llm_queue, tool, tool_call_id,
+                            "error: MCP tools are unavailable", lane, autonomy_flag, event=None,
                         )
                         continue
                     try:
@@ -205,95 +257,89 @@ class ToolExecutor:
                             lane=lane,
                         )
                     except Exception as e:
-                        tool_error = f"error: MCP tool '{tool}' failed - {e}"
-                        self._emit_tool_event("tool_failure", tool)
-                        if tool.startswith(_ACTION_PREFIXES):
-                            skills_feedback.record(tool, args, ok=False, detail=str(e))
-                        logger.error(f"ToolExecutor: {tool_error}")
-                        if self._observability_bus:
-                            self._observability_bus.emit(
-                                source="tool",
-                                kind="error",
-                                message=trim_message(tool_error),
-                                level="error",
-                                meta={"tool": tool, "tool_call_id": tool_call_id},
-                            )
-                        self._enqueue(
-                            llm_queue,
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call_id,
-                                "content": tool_error,
-                                "type": "function_call_output",
-                                **autonomy_flag,
-                            },
-                            lane=lane,
+                        self._fail(
+                            llm_queue, tool, tool_call_id,
+                            f"error: MCP tool '{tool}' failed - {e}", lane, autonomy_flag,
+                            detail=str(e), args=args,
                         )
                     continue
 
                 if tool in all_tools:
-                    tool_instance = tool_classes.get(tool)(
-                        llm_queue=llm_queue,
-                        tool_config=self.tool_config,
-                    )
-                    with ThreadPoolExecutor(max_workers=1) as executor:
-                        future = executor.submit(tool_instance.run, tool_call_id, args)
-                        try:
-                            future.result(timeout=self.tool_timeout)
-                            if self._observability_bus:
-                                elapsed = time.perf_counter() - started_at
-                                self._observability_bus.emit(
-                                    source="tool",
-                                    kind="finish",
-                                    message=tool,
-                                    meta={"tool_call_id": tool_call_id, "elapsed_s": round(elapsed, 3)},
-                                )
-                            logger.success("ToolExecutor: finished {}", tool)
-                            self._emit_tool_event("tool_success", tool)
-                        except FuturesTimeoutError:
-                            timeout_error = f"error: tool '{tool}' timed out after {self.tool_timeout}s"
-                            self._emit_tool_event("tool_timeout", tool)
-                            logger.error(f"ToolExecutor: {timeout_error}")
-                            if self._observability_bus:
-                                self._observability_bus.emit(
-                                    source="tool",
-                                    kind="timeout",
-                                    message=timeout_error,
-                                    level="warning",
-                                    meta={"tool": tool, "tool_call_id": tool_call_id},
-                                )
-                            self._enqueue(
-                                llm_queue,
-                                {
-                                    "role": "tool",
-                                    "tool_call_id": tool_call_id,
-                                    "content": timeout_error,
-                                    "type": "function_call_output",
-                                    **autonomy_flag,
-                                },
-                                lane=lane,
-                            )
-                else:
-                    tool_error = f"error: no tool named {tool} is available"
-                    logger.error(f"ToolExecutor: {tool_error}")
-                    if self._observability_bus:
-                        self._observability_bus.emit(
-                            source="tool",
-                            kind="error",
-                            message=trim_message(tool_error),
-                            level="error",
-                            meta={"tool": tool, "tool_call_id": tool_call_id},
+                    # Guard the tool's output queue: any error/timeout message WE enqueue and the
+                    # tool's OWN result funnel through here, so a timed-out-then-finished built-in
+                    # can't leave a duplicate tool answer for this id.
+                    guarded_queue = _SingleAnswerQueue(llm_queue, tool_call_id)
+                    try:
+                        tool_instance = tool_classes.get(tool)(
+                            llm_queue=guarded_queue,
+                            tool_config=self.tool_config,
                         )
-                    self._enqueue(
-                        llm_queue,
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "content": tool_error,
-                            "type": "function_call_output",
-                            **autonomy_flag,
-                        },
-                        lane=lane,
+                    except Exception as e:  # a constructor failure must NOT leave the tool_call dangling
+                        self._fail(
+                            guarded_queue, tool, tool_call_id,
+                            f"error: tool '{tool}' failed - {e}", lane, autonomy_flag,
+                            detail=str(e), args=args,
+                        )
+                        continue
+                    # Own DAEMON thread, not a ThreadPoolExecutor: the pool registers workers with
+                    # concurrent.futures' atexit hook, which joins them with NO timeout — one hung
+                    # tool would then block interpreter exit forever (a fresh pool per call also
+                    # leaked a thread per timeout). A daemon thread is genuinely abandonable.
+                    tool_error_box: list[Exception | None] = [None]
+
+                    # Bind by default-arg: an ABANDONED worker must not see these rebound by the
+                    # next loop iteration.
+                    def _invoke_tool(_inst=tool_instance, _id=tool_call_id, _a=args, _box=tool_error_box) -> None:
+                        try:
+                            _inst.run(_id, _a)
+                        except Exception as exc:  # noqa: BLE001 - surfaced to the model by the caller
+                            _box[0] = exc
+
+                    worker = threading.Thread(target=_invoke_tool, name=f"tool-{tool}", daemon=True)
+                    worker.start()
+                    # Wait bounded by tool_timeout but ALSO break on shutdown, so quitting mid-tool
+                    # never stalls this thread for the full timeout.
+                    deadline = time.monotonic() + self.tool_timeout
+                    while worker.is_alive() and not self.shutdown_event.is_set():
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        worker.join(timeout=min(0.1, remaining))
+                    if worker.is_alive():
+                        # Abandoned either way; _SingleAnswerQueue drops its late answer.
+                        if self.shutdown_event.is_set():
+                            logger.info("ToolExecutor: abandoning '{}' (shutting down).", tool)
+                        else:
+                            self._fail(
+                                guarded_queue, tool, tool_call_id,
+                                f"error: tool '{tool}' timed out after {self.tool_timeout}s",
+                                lane, autonomy_flag,
+                                event="tool_timeout", kind="timeout", level="warning",
+                            )
+                    elif tool_error_box[0] is not None:
+                        # Any tool failure must NOT dangle the tool_call (mirrors the mcp.* branch):
+                        # e.g. a soundfile decode error in "slow clap" left it with no result.
+                        exc = tool_error_box[0]
+                        self._fail(
+                            guarded_queue, tool, tool_call_id,
+                            f"error: tool '{tool}' failed - {exc}", lane, autonomy_flag,
+                            detail=str(exc), args=args,
+                        )
+                    else:
+                        if self._observability_bus:
+                            elapsed = time.perf_counter() - started_at
+                            self._observability_bus.emit(
+                                source="tool",
+                                kind="finish",
+                                message=tool,
+                                meta={"tool_call_id": tool_call_id, "elapsed_s": round(elapsed, 3)},
+                            )
+                        logger.success("ToolExecutor: finished {}", tool)
+                        self._emit_tool_event("tool_success", tool)
+                else:
+                    self._fail(
+                        llm_queue, tool, tool_call_id,
+                        f"error: no tool named {tool} is available", lane, autonomy_flag, event=None,
                     )
             except queue.Empty:
                 pass  # Normal

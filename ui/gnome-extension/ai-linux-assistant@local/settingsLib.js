@@ -20,24 +20,33 @@ export const SETTINGS_DEFAULTS = {
     model: 'qwen3:4b', think: true, wake_word: 'computer',
     voice: 'M1', actions: true, barge_in: true,
     window_control: false,  // GUI-automation window service; off = the D-Bus service never registers
+    overlay_position: 'bottom-right',  // bottom-right | top-right
 };
 
 export const MODELS = [
-    {id: 'qwen3:4b', label: 'Smart — qwen3:4b'},
-    {id: 'qwen3:1.7b', label: 'Fast — qwen3:1.7b'},
+    {id: 'qwen3:4b', label: 'Smart (qwen3:4b)'},
+    {id: 'qwen3:1.7b', label: 'Fast (qwen3:1.7b)'},
 ];
-export const VOICES = [
-    {id: 'M1', label: 'M1 — male (default)'}, {id: 'M3', label: 'M3 — male'},
-    {id: 'M4', label: 'M4 — male'}, {id: 'M5', label: 'M5 — male'},
-    {id: 'F1', label: 'F1 — female'}, {id: 'F2', label: 'F2 — female'},
-    {id: 'F3', label: 'F3 — female'}, {id: 'F4', label: 'F4 — female'},
-    {id: 'F5', label: 'F5 — female'},
-];
+// Curated: Computer (most STT-robust, the default), Jarvis (distinct, reliable), AI (short — least
+// reliable for speech-to-text but on-brand), plus always-on and click-to-talk. Assistant/Hey Linux dropped.
 export const WAKE_WORDS = [
-    {id: 'computer', label: 'Computer'}, {id: 'jarvis', label: 'Jarvis'},
-    {id: 'assistant', label: 'Assistant'}, {id: 'hey linux', label: 'Hey Linux'},
+    {id: 'computer', label: 'Computer (recommended)'}, {id: 'jarvis', label: 'Jarvis'},
+    {id: 'ai', label: 'AI (short, less reliable)'},
     {id: 'always', label: 'Always listening (no wake word)'},
     {id: 'click', label: 'Click to talk (mic off until clicked)'},
+];
+
+// The voices offered in BOTH the top-bar menu and Preferences (each has a shipped preview clip).
+export const MENU_VOICES = [
+    {id: 'M1', label: 'Male 1 (default)', sample: 'M1.ogg'},
+    {id: 'M4', label: 'Male 2',           sample: 'M4.ogg'},
+    {id: 'F1', label: 'Female 1',         sample: 'F1.ogg'},
+    {id: 'F3', label: 'Female 2',         sample: 'F3.ogg'},
+];
+
+export const OVERLAY_POSITIONS = [
+    {id: 'bottom-right', label: 'Bottom-right'},
+    {id: 'top-right',    label: 'Top-right'},
 ];
 
 export function readSettings() {

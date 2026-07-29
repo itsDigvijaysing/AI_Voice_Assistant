@@ -740,7 +740,41 @@ class LanguageModelProcessor:
                     inflight_guard = True
                 else:
                     inflight_guard = False
-                self._conversation_store.append(llm_message)
+                # A wake-from-sleep transition (see speech_listener) rides in on the same queue
+                # item as the user's message so it's part of THIS turn's request, not a separate
+                # dequeue-triggered turn of its own. Stored as its own system message so the
+                # user's actual words stay unmodified in history.
+                wake_note = llm_input.get("_wake_note")
+                if wake_note:
+                    self._conversation_store.append({"role": "system", "content": str(wake_note)})
+
+                # Barge-in resume: this fragment only arrived because it interrupted a turn that
+                # never got answered (see speech_listener._interrupted_pending_turn) — it's the
+                # rest of the same thought. Fold it into that still-unanswered user message instead
+                # of stacking a new turn, so the model sees one complete utterance and the aborted
+                # partial turns stop competing with each other for a reply.
+                merged_into_previous = False
+                if llm_input.get("_continuation") and llm_message.get("role") == "user":
+                    history = self._conversation_store.snapshot()
+                    if history and history[-1].get("role") == "user":
+                        addition = str(llm_message.get("content") or "").strip()
+
+                        def _merge_turn(msg: dict[str, Any], addition: str = addition) -> dict[str, Any]:
+                            merged = dict(msg)
+                            prior = str(merged.get("content") or "").rstrip()
+                            merged["content"] = f"{prior} {addition}".strip() if prior else addition
+                            return merged
+
+                        merged_into_previous = self._conversation_store.modify_message(
+                            len(history) - 1, _merge_turn
+                        )
+                        if merged_into_previous:
+                            logger.info(
+                                f"LLM Processor: merged barge-in continuation into the unanswered "
+                                f"prior turn: '{addition}'"
+                            )
+                if not merged_into_previous:
+                    self._conversation_store.append(llm_message)
 
                 allow_tools = bool(llm_input.get("_allow_tools", True))
                 # Skills are native function-calling tools (mcp.skills_actions.*): the model selects them

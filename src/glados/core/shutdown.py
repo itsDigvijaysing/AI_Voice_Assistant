@@ -234,20 +234,18 @@ class ShutdownOrchestrator:
         """
         Join all threads in a priority group.
 
+        Threads share ONE group deadline. Slicing the budget up front and then shrinking it by each
+        join starved later components — the 2nd thread of a 2-member group could be left 0.1s while
+        the 1st, which exited instantly, gave nothing back. A shared deadline hands that time on.
+
         Args:
             group: List of components to join.
             timeout: Maximum time to wait for all threads.
         """
-        per_thread_timeout = timeout / max(len(group), 1)
+        deadline = time.time() + max(timeout, 0.0)
 
         for component in group:
-            start = time.time()
-            result = self._join_thread(component, per_thread_timeout)
-            self._results.append(result)
-
-            # Adjust remaining timeout
-            elapsed = time.time() - start
-            per_thread_timeout = max(0.1, per_thread_timeout - elapsed)
+            self._results.append(self._join_thread(component, max(0.1, deadline - time.time())))
 
     def _join_thread(
         self,

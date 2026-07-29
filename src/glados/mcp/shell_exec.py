@@ -66,8 +66,14 @@ def _is_root_target(target: str) -> bool:
 def _destructive_reason(command: str) -> str | None:
     """Return a reason string if the command matches a catastrophic pattern, else None."""
     c = " ".join(command.split())  # normalize whitespace
+    # Also scan a quote-stripped copy: quoting a device path — dd of="/dev/sda", > "/dev/sda",
+    # mkfs '/dev/sda', tee "/dev/sda" — otherwise slips past the device-write patterns, which anchor
+    # on an *unquoted* /dev/. The rm/find logic already strips quotes; this brings _DENY to parity.
+    # (The /dev/ patterns only match raw disks like sd/nvme/mmcblk, never /dev/null|zero, so no new
+    # false positives on benign redirects.)
+    c_unquoted = c.replace('"', " ").replace("'", " ")
     for pattern, reason in _DENY:
-        if pattern.search(c):
+        if pattern.search(c) or pattern.search(c_unquoted):
             return reason
     # rm with recursive+force flags AND a top-level target (/, ~, $HOME, /home, the home dir, ~user) — but
     # NOT a subfolder like ~/Downloads (those stay allowed). Every rm in a chained command is checked, and

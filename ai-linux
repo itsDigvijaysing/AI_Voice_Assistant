@@ -51,10 +51,21 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-linux"
 MANIFEST="$STATE_DIR/install-manifest.tsv"   # the "inversion file": every system change setup makes is recorded here so uninstall reverts exactly our deltas
 PURGE=0; DRYRUN=0; ASSUME_YES=0; KEEP_PKGS=0  # uninstall modifiers
 
-c_say(){  printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
-c_ok(){   printf '   \033[0;32m✓ %s\033[0m\n' "$*"; }
-c_warn(){ printf '   \033[0;33m! %s\033[0m\n' "$*"; }
-c_err(){  printf '   \033[0;31m✗ %s\033[0m\n' "$*" >&2; }
+# Color only when the stream is a TTY (and NO_COLOR is unset): a desktop launch redirects to
+# run.log, where raw escape codes made every line unreadable. Re-run after redirecting our own fds.
+set_colors(){
+  if [ -z "${NO_COLOR:-}" ] && [ -t 1 ]; then
+    C_SAY=$'\033[1;36m'; C_OK=$'\033[0;32m'; C_WARN=$'\033[0;33m'; C_BAN=$'\033[1;35m'; C_OFF=$'\033[0m'
+  else C_SAY=''; C_OK=''; C_WARN=''; C_BAN=''; C_OFF=''; fi
+  if [ -z "${NO_COLOR:-}" ] && [ -t 2 ]; then C_ERR=$'\033[0;31m'; C_ERR_OFF=$'\033[0m'
+  else C_ERR=''; C_ERR_OFF=''; fi
+}
+set_colors
+
+c_say(){  printf '\n%s==> %s%s\n' "$C_SAY" "$*" "$C_OFF"; }
+c_ok(){   printf '   %s✓ %s%s\n' "$C_OK" "$*" "$C_OFF"; }
+c_warn(){ printf '   %s! %s%s\n' "$C_WARN" "$*" "$C_OFF"; }
+c_err(){  printf '   %s✗ %s%s\n' "$C_ERR" "$*" "$C_ERR_OFF" >&2; }
 
 # ---- install manifest (the inversion file): record only what we actually change, deduped ----
 manifest_add(){  # manifest_add <kind> <value> — append once so re-running setup never double-records
@@ -67,14 +78,14 @@ manifest_values(){ [ -f "$MANIFEST" ] && awk -F'\t' -v k="$1" '$1==k{sub(/^[^\t]
 manifest_has(){ [ -f "$MANIFEST" ] && grep -qxF "$(printf '%s\t%s' "$1" "$2")" "$MANIFEST" 2>/dev/null; }
 
 banner(){
-  printf '\033[1;35m'
+  printf '%s' "$C_BAN"
   cat <<'BANNER'
    ╔──────────────────────────────────────────╗
    │   AI Linux Assistant — local · private    │
    │   voice + desktop control · qwen3:4b      │
    ╚──────────────────────────────────────────╝
 BANNER
-  printf '\033[0m'
+  printf '%s' "$C_OFF"
 }
 
 usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$HERE/ai-linux"; }
@@ -97,7 +108,13 @@ ollama_up(){ curl -sf http://127.0.0.1:11434/api/version >/dev/null 2>&1; }
 start_ollama(){
   ollama_up && return 0
   local ob; ob="$(ollama_bin)"; [ -z "$ob" ] && return 1
-  echo "Starting Ollama..."; "$ob" serve >/tmp/ai_linux_ollama.log 2>&1 &
+  # 9>&- closes the run.lock fd (opened earlier for the single-instance flock) in this backgrounded
+  # child before it forks. Without it, ollama serve — and llama-server under it — inherit an open
+  # duplicate of that fd and, being long-lived daemons that outlive this script by design (they stay
+  # up across restarts to keep the model warm), hold the flock forever: every later `stop` then
+  # `start` sees "already running" no matter how fast the engine itself shuts down, because the lock
+  # was never actually about the engine process.
+  echo "Starting Ollama..."; "$ob" serve >/tmp/ai_linux_ollama.log 2>&1 9>&- &
   for _ in $(seq 1 30); do ollama_up && return 0; sleep 1; done
   return 1
 }
@@ -106,19 +123,36 @@ prewarm_ollama(){
   ollama_up || return 0
   curl -sf http://127.0.0.1:11434/api/chat \
     -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false,\"keep_alive\":\"30m\"}" \
-    >/dev/null 2>&1 &
+    >/dev/null 2>&1 9>&- &
 }
 apply_settings(){
   # Settings panel (extension) writes model/thinking here; apply as env before launch.
   local f="${XDG_CONFIG_HOME:-$HOME/.config}/ai-linux/settings.json"
   [ -f "$f" ] || return 0
-  local m t w v a b
-  m="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('model',''))" "$f" 2>/dev/null)"
-  t="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'think' not in d else str(d['think']).lower())" "$f" 2>/dev/null)"
-  w="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('wake_word',''))" "$f" 2>/dev/null)"
-  v="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('voice',''))" "$f" 2>/dev/null)"
-  a="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'actions' not in d else str(d['actions']).lower())" "$f" 2>/dev/null)"
-  b="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('' if 'barge_in' not in d else str(d['barge_in']).lower())" "$f" 2>/dev/null)"
+  local m t w v a b _vals
+  # ONE python3 pass (was six separate interpreters) prints the six values, one per line, '' for an
+  # absent key — same semantics as before: model/wake_word/voice verbatim; think/actions/barge_in
+  # lowercased and distinguishing an ABSENT key ('') from an explicit false (so a default is never
+  # persisted/forced). Heredoc body + terminator must stay column-0.
+  _vals="$(python3 - "$f" 2>/dev/null <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = {}
+def opt(k):
+    return "" if k not in d else str(d[k]).lower()
+print(d.get("model", ""))
+print(opt("think"))
+print(d.get("wake_word", ""))
+print(d.get("voice", ""))
+print(opt("actions"))
+print(opt("barge_in"))
+PY
+)"
+  { IFS= read -r m; IFS= read -r t; IFS= read -r w; IFS= read -r v; IFS= read -r a; IFS= read -r b; } <<EOF
+$_vals
+EOF
   [ -n "$m" ] && { MODEL="$m"; export GLADOS_LLM_MODEL="$m"; }
   # Only override reasoning when the Settings panel sets it EXPLICITLY; otherwise keep the config default
   # (llm_think: true). Verified: reasoning OFF leaks the model's thinking into spoken content on qwen3.
@@ -560,6 +594,7 @@ case "$SUB" in
               DESKTOP_LAUNCH=1
               LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-linux"; mkdir -p "$LOG_DIR"
               exec >>"$LOG_DIR/run.log" 2>&1
+              set_colors   # stdout/stderr are the log file now — drop the ANSI escapes
               echo "===== $(date '+%Y-%m-%d %H:%M:%S') ai-linux $SUB ====="
               # Notify on abnormal exit only: skip user-initiated stops (130=SIGINT, 143=SIGTERM) and
               # label by runtime — a crash hours in is not a startup failure.
@@ -569,11 +604,44 @@ case "$SUB" in
                       notify-send -u critical "AI Linux Assistant" "$m — see $LOG_DIR/run.log"
                     fi' EXIT
             fi
+            # Single instance. Two engines share ONE mic (the same AEC source), one overlay
+            # state.json/control.json and one Ollama — they hear each other speak, so barge-in aborts
+            # every reply, and one "quit" click kills both. Model load takes ~35s, during which the
+            # overlay still reads "not running" (state.json appears only once the bridge starts), so a
+            # second click used to launch a second engine. The lock fd survives `exec` and is released
+            # by the kernel on exit or crash, so there is no stale lock to clean up.
+            if [ "$SUB" = "start" ] || [ "$SUB" = "tui" ]; then
+              mkdir -p "$STATE_DIR" 2>/dev/null; chmod 700 "$STATE_DIR" 2>/dev/null || true
+              # Probe the open first: a FAILED `exec` redirect makes bash exit the whole script, so an
+              # unwritable state dir would kill the launcher with no message instead of just skipping.
+              if command -v flock >/dev/null 2>&1 && : >>"$STATE_DIR/run.lock" 2>/dev/null; then
+                exec 9>>"$STATE_DIR/run.lock"
+                if ! flock -n 9; then
+                  # Don't bail instantly: a prior "stop" only sets shutdown_event, so the old
+                  # process can still be mid-graceful-shutdown and holding this same lock. The
+                  # engine's own shutdown watchdog force-exits by 8s no matter what, so this only
+                  # needs headroom over that (process teardown + conda run overhead) — flock -w
+                  # blocks until it's free instead of failing on that race.
+                  LOCK_WAIT_S=15
+                  c_warn "a previous session is still active or shutting down — waiting up to ${LOCK_WAIT_S}s..."
+                  [ "$DESKTOP_LAUNCH" = "1" ] && command -v notify-send >/dev/null 2>&1 \
+                    && notify-send "AI Linux Assistant" "Waiting up to ${LOCK_WAIT_S}s for the previous session to stop..."
+                  if ! flock -w "$LOCK_WAIT_S" 9; then
+                    c_warn "still busy after ${LOCK_WAIT_S}s — a previous session may be stuck; stop it from the top-bar icon or check run.log"
+                    [ "$DESKTOP_LAUNCH" = "1" ] && command -v notify-send >/dev/null 2>&1 \
+                      && notify-send -u critical "AI Linux Assistant" "Still busy after ${LOCK_WAIT_S}s — a previous session may be stuck."
+                    exit 0   # not a failure: exit 0 keeps the EXIT trap from crying "Failed to start"
+                  fi
+                  c_warn "previous session stopped — starting now"
+                fi
+              fi
+            fi
             # Arm gated shell/desktop actions so the assistant can actually act (mute, open apps,
             # run commands). The autonomy hard-floor in core/tool_safety.py still blocks unattended
             # autonomous tool calls regardless of this. Disable with --no-actions.
             case "$ACTIONS" in
               on)   export GLADOS_ALLOW_ACTIONS=1 ;;
+              off)  unset GLADOS_ALLOW_ACTIONS ;;   # --no-actions must also override an INHERITED env value
               auto) { [ "$SUB" = "start" ] || [ "$SUB" = "tui" ]; } && export GLADOS_ALLOW_ACTIONS=1 ;;
             esac
             # Groq brain needs an API key before the engine gets anywhere (say/download don't use the LLM).

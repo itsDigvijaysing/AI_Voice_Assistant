@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
@@ -47,7 +48,19 @@ def _launch(command: str) -> str:
     just opened (sh -c execs a single command directly). setsid -f forks it into its own session,
     and the /dev/null redirect keeps the child from holding run_shell's capture pipes open.
     resource_caps=False: the app must NOT live out its life inside run_shell's capped scope.
+
+    setsid -f forking successfully always returns 0, even if the app then fails to start — so
+    once detached there is no rc left to trust. The one failure mode we CAN check synchronously,
+    with no race, is "the binary isn't on PATH at all" — do that before forking so a typo'd/
+    uninstalled app gets an honest error instead of a false "opened" (matches _launch_app's
+    existing which() check; this covers the other callers, e.g. gnome-control-center).
     """
+    try:
+        binary = shlex.split(command)[0]
+    except (ValueError, IndexError):
+        binary = ""
+    if binary and not shutil.which(binary):
+        return json.dumps({"error": f"'{binary}' is not installed or not on PATH"})
     return json.dumps(run_shell(f"setsid -f {command} >/dev/null 2>&1", resource_caps=False))
 
 
@@ -136,7 +149,10 @@ def open_app_or_link(target: str) -> str:
         url = t if "://" in t else "https://" + t
         return _run(f"xdg-open {shlex.quote(url)}")
     if t.startswith(("/", "~", "$HOME")):
-        return _run(f"xdg-open {shlex.quote(t)}")
+        # shlex.quote single-quotes the arg, which suppresses ~ and $HOME expansion — so resolve them
+        # to an absolute path FIRST (xdg-open does no expansion itself), then quote the resolved path.
+        p = os.path.expanduser(os.path.expandvars(t))
+        return _run(f"xdg-open {shlex.quote(p)}")
     return _launch_app(t)  # an application name -> resolve + launch
 
 

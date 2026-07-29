@@ -11,8 +11,8 @@ Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and 
 
 ---
 
-## ✨ Features
-- **Wake-word voice loop** with VAD (say "computer …"; **talk-over barge-in is on by default** via PipeWire echo-cancel — see [Barge-in](#-barge-in-interrupting-the-assistant)).
+## Features
+- **Wake-word voice loop** with VAD (say "computer …"; **talk-over barge-in is on by default** via PipeWire echo-cancel — see [Barge-in](#barge-in-interrupting-the-assistant)).
 - **Voice *and* text** input (`input_mode: both`).
 - **Local brain** — `qwen3:4b` via [Ollama](https://ollama.com) (GPU); switch to the lighter `qwen3:1.7b` via the Settings panel / `GLADOS_LLM_MODEL`.
 - **CPU speech** — Parakeet ASR + SuperTonic TTS (Kokoro fallback), all ONNX, so the GPU stays free for the LLM.
@@ -28,15 +28,15 @@ Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and 
 
 ---
 
-## 🧠 Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-    mic(["🎙 Microphone"]) --> vad["Silero VAD<br/>(always-listening)"]
+    mic(["Microphone"]) --> vad["Silero VAD<br/>(always-listening)"]
     vad --> asr["Parakeet ASR<br/>ONNX · CPU"]
     asr --> brain{"qwen3:4b / Ollama<br/>GPU · router"}
     brain -->|"answer"| tts["SuperTonic TTS<br/>ONNX · CPU"]
-    tts --> spk(["🔊 Speaker"])
+    tts --> spk(["Speaker"])
     brain -->|"call tool"| gate["Action safety gate"]
     gate --> mcp["MCP tool servers"]
     mcp -->|"result"| brain
@@ -70,7 +70,7 @@ sequenceDiagram
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 One script does everything — install and run:
 
@@ -100,7 +100,7 @@ Speech weights download on first `setup` only if not already present.
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 All settings live in [`configs/ai_linux_config.yaml`](configs/ai_linux_config.yaml) (top key `Glados:`):
 
@@ -129,7 +129,7 @@ default focus.**
 
 ---
 
-## 🛠 Tools (MCP servers)
+## Tools (MCP servers)
 
 Tools are exposed to the model as `mcp.<server>.<tool>`. The menu is deliberately **lean** — a short, stable
 set of typed tools is what makes a small model reliably pick the right one (verified). **5 servers are active:**
@@ -138,8 +138,8 @@ set of typed tools is what makes a small model reliably pick the right one (veri
 |---|---|---|:---:|
 | `system_info` | `system_overview`, `battery_status`, `network_status` | read-only system/battery/network status | — |
 | `time_info` | `now_iso` | current time | — |
-| **`skills_actions`** | `set_screen_brightness`, `set_volume`, `lock_screen`, `take_screenshot`, `open_app_or_link`, `search_web`, `control_media`, `toggle_night_light`, `set_do_not_disturb`, `open_settings`, `open_terminal`, `open_file_manager`, `clipboard` | the **13 typed desktop actions** — the model's main capability surface | ✅ |
-| **`shell`** | `run_command` | general local command fallback (as you, never sudo) | ✅ |
+| **`skills_actions`** | `set_screen_brightness`, `set_volume`, `lock_screen`, `take_screenshot`, `open_app_or_link`, `search_web`, `control_media`, `toggle_night_light`, `set_do_not_disturb`, `open_settings`, `open_terminal`, `open_file_manager`, `clipboard` | the **13 typed desktop actions** — the model's main capability surface | yes |
+| **`shell`** | `run_command` | general local command fallback (as you, never sudo) | yes |
 | `voice` | `set_voice` | change the assistant's own TTS voice live | — |
 
 Each `skills_actions` tool builds its exact command and runs it through the **same** gated + denylisted
@@ -156,12 +156,12 @@ Gated tools (`skills_actions` + `shell` + `computer_use`) are **off by default**
 ```mermaid
 flowchart TD
     A["Tool call"] --> B{"Gated family?<br/>mcp.skills_actions.* / mcp.shell.* / mcp.computer_use.*"}
-    B -->|"no"| RUN["✅ Run tool"]
+    B -->|"no"| RUN["Run tool"]
     B -->|"yes"| C{"Autonomy mode?"}
-    C -->|"yes"| HF["⛔ Deny — hard floor"]
+    C -->|"yes"| HF["Deny — hard floor"]
     C -->|"no"| D{"GLADOS_ALLOW_ACTIONS set?"}
     D -->|"yes"| RUN
-    D -->|"no"| AD["⛔ Deny — arm to enable"]
+    D -->|"no"| AD["Deny — arm to enable"]
 ```
 
 Interactive launches (`./ai-linux`, the GNOME app icon, `./ai-linux tui`) **arm actions by default** so the
@@ -189,7 +189,7 @@ the full threat model, guarantees, and how to run disarmed (`./ai-linux --no-act
 
 ---
 
-## 🗣 Barge-in (interrupting the assistant)
+## Barge-in (interrupting the assistant)
 
 **On by default:** `./ai-linux` runs **full-duplex** so you can talk over the assistant on open speakers —
 your voice cuts it off mid-sentence (TTS is cancelled the instant VAD fires). It works because the launcher
@@ -208,7 +208,7 @@ guard) and re-opens after a short hangover. Use it if AEC misbehaves on your har
 
 ---
 
-## 🪟 On-screen overlay (optional)
+## On-screen overlay (optional)
 
 A GNOME Shell extension shows a top-right **orb + transcript** that tracks the assistant's state
 (idle / listening / thinking / speaking), with a mode header:
@@ -231,7 +231,7 @@ instantly. The menu header shows the running build (**"AI Linux v\<version\> —
 the installed copy differs from the repo (Wayland loads extension code only at login, so re-copy + re-login
 after edits).
 
-## 📁 Project layout
+## Project layout
 
 ```
 ai-linux                       # single launcher + installer (setup · doctor · run · --version)
@@ -247,7 +247,7 @@ PLAN.md                        # design notes & decisions
 
 ---
 
-## 📌 Status
+## Status
 **v2.4.2.** v1 plus the native-tools pivot (skills are typed function-calling tools, reasoning on), a
 shared-core Settings/preferences system with versioning, kernel-enforced shell resource caps, and the
 window-control service merged into the single overlay extension. Verified: configs load; safety gate + the
@@ -257,7 +257,7 @@ Runtime is fully provisioned locally (Ollama + `qwen3:4b`, all ONNX weights). Re
 live **voice run** (mic + GPU) and **one logout/login** to load the extension. See [PLAN.md](PLAN.md) for the
 roadmap (delegated executor, richer memory/RAG, per-action voice confirmation).
 
-## 🙏 Credits & licenses
+## Credits & licenses
 - Engine: **[dnhkng/GLaDOS](https://github.com/dnhkng/GLaDOS)** (MIT) — vendored; see [`LICENSE.GLaDOS`](LICENSE.GLaDOS).
 - Desktop control: **[agent-sh/computer-use-linux](https://github.com/agent-sh/computer-use-linux)** (MIT).
 - Default TTS: **[supertone-inc/supertonic](https://github.com/supertone-inc/supertonic)** (code MIT; weights OpenRAIL-M) — ONNX, fetched once on first use.

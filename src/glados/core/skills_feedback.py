@@ -13,11 +13,23 @@ import time
 from pathlib import Path
 
 _LOCK = threading.Lock()
+_DIR_READY = False  # ensure+chmod the data dir once per process (record() is on the per-tool-call hot path)
 
 
 def _log_path() -> Path:
+    global _DIR_READY
     data = Path(__file__).resolve().parents[2].parent / "data"  # <repo>/data
-    data.mkdir(parents=True, exist_ok=True, mode=0o700)  # user-only (outcome log may reflect activity)
+    if not _DIR_READY:
+        data.mkdir(parents=True, exist_ok=True)
+        try:
+            # mkdir(mode=0o700) is a no-op when data/ already exists (it's git-tracked with committed
+            # assets), so the intended user-only perm was never applied — enforce it here. A 0700 dir
+            # blocks other users from traversing in to read the outcome log (records commands the
+            # assistant ran) regardless of the file's own mode.
+            data.chmod(0o700)
+        except OSError:
+            pass
+        _DIR_READY = True
     return data / "skills_feedback.jsonl"
 
 

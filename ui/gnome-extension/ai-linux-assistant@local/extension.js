@@ -19,7 +19,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 // Shared settings core (same module the prefs window uses — one source of truth).
 import {
-    RUNTIME_DIR, STATE_PATH, SETTINGS_PATH, SETTINGS_DEFAULTS, VOICES, WAKE_WORDS,
+    RUNTIME_DIR, STATE_PATH, SETTINGS_PATH, SETTINGS_DEFAULTS, MENU_VOICES, WAKE_WORDS,
     readSettings, saveKey, writeControl, writeVoice, wakeControl,
 } from './settingsLib.js';
 // Vendored (MIT) window-control D-Bus service — dormant unless the window_control setting is on.
@@ -36,6 +36,7 @@ const IDLE_HIDE_MS = 10000;       // fade out + hide after 10s with no conversat
 const TRANSCRIPT_FRESH_MS = 1500; // a just-changed transcript still counts as activity this tick
 const PIN_TIMEOUT_MS = 30000;
 const LOG_MAX = 24;
+const STARTING_TIMEOUT = 60000;   // stop the "starting" blink if the engine never comes up
 
 // ---------------------------------------------------------------- animated orb
 // A flowing multi-colour "plasma" orb drawn with Cairo on an St.DrawingArea at ~30fps. Cairo (not a GPU
@@ -55,7 +56,7 @@ const ORB_PARAMS = {
 const Orb = GObject.registerClass(
 class Orb extends St.DrawingArea {
     _init() {
-        super._init({style_class: 'ai-orb', width: 128, height: 128, reactive: false});
+        super._init({style_class: 'ai-orb', width: 112, height: 112, reactive: false});
         this._state = 'idle';
         this._t = 0;
         this._timer = 0;
@@ -190,7 +191,7 @@ class Overlay extends St.BoxLayout {
             track_hover: true,
         });
 
-        // orb (clickable for click-to-talk), with a mute toggle on its own row just below, right-aligned
+        // orb (clickable for click-to-talk)
         this._orb = new Orb();
         this._orbStack = new St.Widget({
             layout_manager: new Clutter.BinLayout(),
@@ -209,21 +210,10 @@ class Overlay extends St.BoxLayout {
         });
         this.add_child(this._orbStack);
 
-        this._muteBtn = new St.Button({style_class: 'ai-mute-mini', can_focus: true, accessible_name: 'Mute mic'});
-        this._muteBtn.set_child(new St.Icon({
-            icon_name: 'audio-input-microphone-muted-symbolic',
-            icon_size: 18,
-            style_class: 'ai-mute-mini-icon',
-        }));
-        this._muteBtn.connect('clicked', () => writeControl({action: 'toggle_mute'}));
-        const muteRow = new St.Bin({x_expand: true, x_align: Clutter.ActorAlign.END});  // right side, below the orb
-        muteRow.set_child(this._muteBtn);
-        this.add_child(muteRow);
-
         // transcript panel (translucent; no Shell blur — its square corners poked past the rounding)
         this._panel = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'ai-panel'});
         this._scroll = new St.ScrollView({style_class: 'ai-scroll', x_expand: true});
-        this._scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        this._scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.EXTERNAL);  // scrollable but no visible scrollbar
         this._scroll.style = 'max-height: 240px;';
         this._logBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'ai-log', x_expand: true});
         this._scroll.set_child(this._logBox);
@@ -232,15 +222,27 @@ class Overlay extends St.BoxLayout {
         this.add_child(this._panel);
 
         this._state = '';
+        this._anchor = 'top';
         this._scrollIdleId = 0;
+    }
+
+    // Reorder rows so the transcript stacks ABOVE the orb when anchored at the bottom of the screen
+    // (chat grows upward), and orb-on-top when anchored at the top. Driven by _reposition().
+    setAnchor(anchor) {
+        if (anchor !== 'top' && anchor !== 'bottom') anchor = 'bottom';
+        if (this._anchor === anchor) return;
+        this._anchor = anchor;
+        for (const c of [this._orbStack, this._panel]) this.remove_child(c);
+        const order = anchor === 'bottom'
+            ? [this._panel, this._orbStack]   // transcript on top, orb at the bottom
+            : [this._orbStack, this._panel];  // orb on top (classic)
+        for (const c of order) this.add_child(c);
     }
 
     update(data) {
         const state = STATES.includes(data.state) ? data.state : 'idle';
         this._state = state;
         this._orb.setState(state);
-        if (state === 'muted') this._muteBtn.add_style_class_name('active');
-        else this._muteBtn.remove_style_class_name('active');
         return state;
     }
 
@@ -283,42 +285,51 @@ class Overlay extends St.BoxLayout {
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init(cb) {
-        super._init(0.0, 'AI Linux Assistant'); // click opens its menu
+        super._init(0.5, 'AI Linux Assistant'); // 0.5 = center the popup menu under the icon
         this._cb = cb;
-        this._ver = cb.version ? ` v${cb.version}` : '';  // live-build marker: header shows the LOADED code's version
+        this._samplesDir = cb.samplesDir ?? '';
         this._dotState = '';
 
         const box = new St.BoxLayout({style_class: 'ai-indicator-box'});
-        this._dot = new St.Widget({style_class: 'ai-indicator state-off', y_align: Clutter.ActorAlign.CENTER});
-        box.add_child(this._dot);
+        this._mono = new St.Label({text: 'AI', style_class: 'ai-mono state-off', y_align: Clutter.ActorAlign.CENTER});
+        this._mono.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;  // show "AI", never an ellipsized "…"
+        box.add_child(this._mono);
         this.add_child(box);
 
-        this._header = new PopupMenu.PopupMenuItem('AI Linux Assistant' + this._ver, {reactive: false});
+        this._header = new PopupMenu.PopupMenuItem('AI Linux', {reactive: false});
         this.menu.addMenuItem(this._header);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        this._startStop = new PopupMenu.PopupMenuItem('Start assistant');
-        this._startStop.connect('activate', () => this._cb.startStop());
-        this.menu.addMenuItem(this._startStop);
+        // START (blue) / STOP (red) rounded gradient button.
+        this._startStopItem = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        this._startBtn = new St.Button({style_class: 'ai-startstop start', label: 'START', x_expand: true, can_focus: true});
+        this._startBtn.connect('clicked', () => { this._cb.startStop(); this.menu.close(); });
+        this._startStopItem.add_child(this._startBtn);
+        this.menu.addMenuItem(this._startStopItem);
 
-        this._showItem = new PopupMenu.PopupMenuItem('Show / hide overlay');
-        this._showItem.connect('activate', () => this._cb.toggleOverlay());
-        this.menu.addMenuItem(this._showItem);
-
-        // Minimal daily controls only — the LIVE ones (voice + listening). Everything else
-        // (model, deep thinking, actions, barge-in) lives in the prefs window ("All settings…").
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
+        // Voice picker (4 curated, each with a speaker preview).
         this._voiceSub = new PopupMenu.PopupSubMenuMenuItem('Voice');
         this._voiceItems = {};
-        for (const v of VOICES) {
-            const it = new PopupMenu.PopupMenuItem(v.label);
-            it.connect('activate', () => this._pickVoice(v.id));
-            this._voiceItems[v.id] = it;
-            this._voiceSub.menu.addMenuItem(it);
+        for (const v of MENU_VOICES) {
+            const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+            const selectBtn = new St.Button({
+                style_class: 'ai-voice-select', x_expand: true, can_focus: true,
+                child: new St.Label({text: v.label, y_align: Clutter.ActorAlign.CENTER}),
+            });
+            selectBtn.connect('clicked', () => this._pickVoice(v.id));
+            const previewBtn = new St.Button({
+                style_class: 'ai-voice-preview', can_focus: true, accessible_name: 'Play sample',
+                child: new St.Icon({icon_name: 'audio-volume-high-symbolic', icon_size: 16}),
+            });
+            previewBtn.connect('clicked', () => this._playSample(v.sample));
+            item.add_child(selectBtn);
+            item.add_child(previewBtn);
+            this._voiceItems[v.id] = item;
+            this._voiceSub.menu.addMenuItem(item);
         }
         this.menu.addMenuItem(this._voiceSub);
 
+        // Listening: wake word (Computer / Jarvis / AI), always-on, or click-to-talk.
         this._wakeSub = new PopupMenu.PopupSubMenuMenuItem('Listening');
         this._wakeItems = {};
         for (const w of WAKE_WORDS) {
@@ -329,15 +340,26 @@ class Indicator extends PanelMenu.Button {
         }
         this.menu.addMenuItem(this._wakeSub);
 
+        // Mute + Show overlay as SWITCHES so their on/off state is visible at a glance.
+        this._muteItem = new PopupMenu.PopupSwitchMenuItem('Mute microphone', false);
+        this._muteItem.connect('toggled', (_i, state) => {
+            if (this._syncing) return;                       // ignore programmatic setToggleState
+            writeControl({action: state ? 'mute' : 'unmute'});
+        });
+        this.menu.addMenuItem(this._muteItem);
+
+        this._showItem = new PopupMenu.PopupSwitchMenuItem('Show overlay', false);
+        this._showItem.connect('toggled', (_i, state) => {
+            if (this._syncing) return;
+            this._cb.setOverlay(state);
+        });
+        this.menu.addMenuItem(this._showItem);
+
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const prefs = new PopupMenu.PopupMenuItem('All settings…');
+        const prefs = new PopupMenu.PopupMenuItem('All settings');
         prefs.connect('activate', () => this._cb.openPrefs());
         this.menu.addMenuItem(prefs);
-
-        const logs = new PopupMenu.PopupMenuItem('Open logs');
-        logs.connect('activate', () => this._cb.logs());
-        this.menu.addMenuItem(logs);
 
         this.refreshSettings();  // labels/ornaments from the shared store (also re-run by the file monitor)
     }
@@ -351,7 +373,7 @@ class Indicator extends PanelMenu.Button {
         for (const k in this._voiceItems)
             this._voiceItems[k].setOrnament(k === voice ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
         const wake = this._settings.wake_word ?? SETTINGS_DEFAULTS.wake_word;
-        this._wakeSub.label.text = this._wakeLabel();
+        this._wakeSub.label.text = this._wakeLabel(wake);
         for (const k in this._wakeItems)
             this._wakeItems[k].setOrnament(k === wake ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
     }
@@ -359,18 +381,22 @@ class Indicator extends PanelMenu.Button {
     setState(state, running) {
         this._running = !!running;  // used by _pickVoice's live-vs-next-start notification
         const s = running ? (STATES.includes(state) ? state : 'idle') : 'off';
-        this._dot.style_class = `ai-indicator state-${s}`;
-        this._header.label.text = running ? `AI Linux${this._ver} — ${s}` : `AI Linux${this._ver} — not running`;
-        this._startStop.label.text = running ? 'Shutdown assistant' : 'Start assistant';
+        this._startBtn.reactive = true;   // clear any "starting" lock
+        this._mono.style_class = `ai-mono state-${s}`;
+        this._header.label.text = running ? `AI Linux: ${s}` : 'AI Linux: not running';
+        this._startBtn.label = running ? 'STOP' : 'START';
+        this._startBtn.style_class = running ? 'ai-startstop stop' : 'ai-startstop start';
+        this._syncSwitch(this._muteItem, running && s === 'muted');
+        this._muteItem.setSensitive(running);
         this._showItem.setSensitive(running);
 
         if (s === this._dotState) return;
         this._dotState = s;
-        this._dot.remove_all_transitions();
-        this._dot.opacity = 255;
+        this._mono.remove_all_transitions();
+        this._mono.opacity = 255;
         const PULSE = {loading: 700, listening: 1300, thinking: 500, speaking: 380};
         if (PULSE[s]) {
-            this._dot.ease({
+            this._mono.ease({
                 opacity: 90,
                 duration: PULSE[s],
                 mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
@@ -380,18 +406,44 @@ class Indicator extends PanelMenu.Button {
         }
     }
 
+    // Set a switch's visual state WITHOUT it echoing back as a user 'toggled' (guarded by _syncing).
+    _syncSwitch(item, state) {
+        this._syncing = true;
+        item.setToggleState(state);
+        this._syncing = false;
+    }
+
+    // Blink the monogram amber while the engine boots, before it writes its first state.json.
+    setStarting() {
+        this._header.label.text = 'AI Linux: starting';
+        this._startBtn.label = 'STARTING';
+        this._startBtn.reactive = false;   // no second launch mid-boot
+        if (this._dotState === 'starting') return;
+        this._dotState = 'starting';
+        this._mono.style_class = 'ai-mono state-loading';
+        this._mono.remove_all_transitions();
+        this._mono.opacity = 255;
+        this._mono.ease({
+            opacity: 90, duration: 600, mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
+            autoReverse: true, repeatCount: -1,
+        });
+    }
+
+    setOverlayShown(shown) {
+        this._syncSwitch(this._showItem, !!shown);
+    }
+
     _pickVoice(id) {
         saveKey('voice', id);   // persists for next Start (launcher -> GLADOS_VOICE)
         writeVoice(id);         // applies LIVE via the bridge's voice.json channel
         this.refreshSettings();
         Main.notify('AI Linux Assistant',
-            this._running ? 'Voice switched to ' + id + '.' : 'Voice ' + id + ' — applies on Start.');
+            this._running ? 'Voice switched to ' + id + '.' : 'Voice ' + id + ' applies on Start.');
     }
 
-    _wakeLabel() {
-        const cur = this._settings.wake_word ?? SETTINGS_DEFAULTS.wake_word;
-        const w = WAKE_WORDS.find(x => x.id === cur);
-        return 'Listening: ' + (w ? w.label : cur);
+    _wakeLabel(id) {
+        const w = WAKE_WORDS.find(x => x.id === id);
+        return 'Listening: ' + (w ? w.label.replace(/\s*\(.*\)$/, '') : id);  // drop the parenthetical note
     }
 
     _pickWake(id) {
@@ -399,12 +451,25 @@ class Indicator extends PanelMenu.Button {
         writeControl(wakeControl(id));   // live to a running engine
         this.refreshSettings();
         const msg = id === 'always' ? 'Always listening.'
-            : id === 'click' ? 'Click the orb to talk.' : 'Wake word: ' + id;
+            : id === 'click' ? 'Click the orb to talk.' : 'Wake word set to ' + id + '.';
         Main.notify('AI Linux Assistant', msg);
     }
 
+    _playSample(file) {
+        try {
+            const path = GLib.build_filenamev([this._samplesDir, file]);
+            global.display.get_sound_player().play_from_file(Gio.File.new_for_path(path), 'AI voice sample', null);
+        } catch (e) {
+            try {
+                Gio.Subprocess.new(['pw-play', GLib.build_filenamev([this._samplesDir, file])], Gio.SubprocessFlags.NONE);
+            } catch (e2) {
+                Main.notify('AI Linux Assistant', 'Could not play the voice sample.');
+            }
+        }
+    }
+
     destroy() {
-        this._dot?.remove_all_transitions();
+        this._mono?.remove_all_transitions();
         super.destroy();
     }
 });
@@ -424,6 +489,8 @@ export default class AiLinuxOverlayExtension extends Extension {
         this._mode = '';             // last listening mode from state.json (always|wake|click)
         this._session = false;       // wake-word conversation window open (keeps the overlay up)
         this._shownTarget = false;   // desired overlay visibility (drives fade in/out)
+        this._starting = false;      // engine launch in progress (blinks the top-bar icon)
+        this._startedAt = 0;
 
         this._overlay = new Overlay();
         // In click-to-talk mode, tapping the orb starts one listen turn.
@@ -437,10 +504,9 @@ export default class AiLinuxOverlayExtension extends Extension {
 
         this._indicator = new Indicator({
             startStop: () => this._startStop(),
-            toggleOverlay: () => this._toggleOverlay(),
-            logs: () => this._openLogs(),
+            setOverlay: (want) => this._setOverlayPinned(want),
             openPrefs: () => this.openPreferences(),
-            version: this.metadata['version-name'] ?? '',
+            samplesDir: GLib.build_filenamev([this.path, 'samples']),
         });
         Main.panel.addToStatusArea('ai-linux-assistant', this._indicator, 0, 'right');
 
@@ -466,6 +532,7 @@ export default class AiLinuxOverlayExtension extends Extension {
             this._settingsMonId = this._settingsMon.connect('changed', () => {
                 this._indicator?.refreshSettings();
                 this._syncWindowControl();
+                this._reposition();
             });
         } catch (e) {
             logError(e, 'ai-linux: settings monitor failed');
@@ -484,23 +551,28 @@ export default class AiLinuxOverlayExtension extends Extension {
         } else {
             const app = Gio.DesktopAppInfo.new(DESKTOP_ID);
             if (app) {
-                try { app.launch([], null); } catch (e) { Main.notify('AI Linux Assistant', 'Failed to start: ' + e); }
+                try {
+                    app.launch([], null);
+                    this._starting = true;                                  // blink the top-bar icon while it boots
+                    this._startedAt = GLib.get_monotonic_time() / 1000;
+                    this._indicator?.setStarting();
+                } catch (e) { Main.notify('AI Linux Assistant', 'Failed to start: ' + e); }
             } else {
-                Main.notify('AI Linux Assistant', 'Launcher not found — run "./ai-linux setup", or start it from a terminal with "./ai-linux".');
+                Main.notify('AI Linux Assistant', 'Launcher not found. Run "./ai-linux setup", or start it from a terminal with "./ai-linux".');
             }
         }
     }
 
-    _toggleOverlay() {
+    _setOverlayPinned(want) {
         if (!this._overlay) return;
-        if (this._shownTarget) {
-            this._pinned = false;
-            this._clearPinTimeout();
-            this._fadeOut();
-        } else {
+        if (want) {
             this._pinned = true;
             this._armPinTimeout();
             this._fadeIn();
+        } else {
+            this._pinned = false;
+            this._clearPinTimeout();
+            this._fadeOut();
         }
     }
 
@@ -518,19 +590,6 @@ export default class AiLinuxOverlayExtension extends Extension {
         if (this._pinTimeoutId) {
             GLib.source_remove(this._pinTimeoutId);
             this._pinTimeoutId = 0;
-        }
-    }
-
-    _openLogs() {
-        const logPath = GLib.build_filenamev([GLib.get_user_state_dir(), 'ai-linux', 'run.log']);
-        if (Gio.File.new_for_path(logPath).query_exists(null)) {
-            try {
-                Gio.AppInfo.launch_default_for_uri('file://' + logPath, null);
-            } catch (e) {
-                Main.notify('AI Linux Assistant', 'Could not open ' + logPath);
-            }
-        } else {
-            Main.notify('AI Linux Assistant', 'No log file yet at ' + logPath + ' — start the assistant first.');
         }
     }
 
@@ -564,11 +623,18 @@ export default class AiLinuxOverlayExtension extends Extension {
                 this._lastYouTs = 0;
                 this._lastReplyTs = 0;
                 this._session = false;
-                this._indicator?.setState('off', false);
+                const bootMs = GLib.get_monotonic_time() / 1000;
+                if (this._starting && (bootMs - this._startedAt) < STARTING_TIMEOUT) {
+                    this._indicator?.setStarting();   // keep blinking until the engine reports in
+                } else {
+                    this._starting = false;
+                    this._indicator?.setState('off', false);
+                }
                 this._applyVisibility('off');
                 return;
             }
 
+            this._starting = false;   // engine reported in — stop the "starting" blink
             this._mode = data.mode || '';
             this._session = !!data.session;
             const state = this._overlay.update(data);
@@ -588,6 +654,7 @@ export default class AiLinuxOverlayExtension extends Extension {
             }
             if (changed) {
                 this._overlay.renderLog(this._log);
+                this._reposition();
                 this._lastTranscriptTs = GLib.get_monotonic_time() / 1000;
             }
             this._applyVisibility(state);
@@ -618,6 +685,7 @@ export default class AiLinuxOverlayExtension extends Extension {
     _fadeIn() {
         if (!this._overlay || this._shownTarget) return;
         this._shownTarget = true;
+        this._indicator?.setOverlayShown(true);
         this._overlay.remove_all_transitions();
         if (!this._overlay.visible) {
             this._overlay.opacity = 0;
@@ -630,6 +698,7 @@ export default class AiLinuxOverlayExtension extends Extension {
     _fadeOut() {
         if (!this._overlay || !this._shownTarget) return;
         this._shownTarget = false;
+        this._indicator?.setOverlayShown(false);
         this._overlay.remove_all_transitions();
         if (!this._overlay.visible) return;
         this._overlay.ease({
@@ -644,11 +713,20 @@ export default class AiLinuxOverlayExtension extends Extension {
         if (!this._overlay) return;
         const mon = Main.layoutManager.primaryMonitor;
         if (!mon) return;
+        const pos = readSettings().overlay_position ?? SETTINGS_DEFAULTS.overlay_position;
         const [, natW] = this._overlay.get_preferred_width(-1);
-        const w = natW || 340;
-        let x = mon.x + mon.width - w - 16;
+        const [, natH] = this._overlay.get_preferred_height(natW || -1);
+        const w = natW || 340, h = natH || 200, M = 16;
+        let x, y, anchor;
+        if (pos === 'top-right') {
+            x = mon.x + mon.width - w - M; y = mon.y + 44; anchor = 'top';
+        } else { // bottom-right (default)
+            x = mon.x + mon.width - w - M; y = mon.y + mon.height - h - M; anchor = 'bottom';
+        }
         if (x < mon.x + 8) x = mon.x + 8;
-        this._overlay.set_position(x, mon.y + 44);
+        if (y < mon.y + 8) y = mon.y + 8;
+        this._overlay.setAnchor(anchor);
+        this._overlay.set_position(Math.round(x), Math.round(y));
     }
 
     _syncWindowControl() {

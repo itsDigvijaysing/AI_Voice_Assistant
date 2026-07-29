@@ -24,7 +24,11 @@ _LOCK = threading.Lock()  # guards _mem (concurrent engine + MCP retrieval); _em
 
 def _cache_path() -> Path:
     data = Path(__file__).resolve().parents[2].parent / "data"  # <repo>/data
-    data.mkdir(parents=True, exist_ok=True, mode=0o700)  # user-only vector cache
+    data.mkdir(parents=True, exist_ok=True)
+    try:  # mkdir(mode=) is ignored for the pre-existing git-tracked data/; enforce user-only here
+        data.chmod(0o700)
+    except OSError:
+        pass
     return data / "skills_vectors.json"
 
 

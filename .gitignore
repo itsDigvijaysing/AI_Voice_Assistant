@@ -26,5 +26,6 @@ data/skills_vectors.json
 
 # Local development docs & tooling (kept out of the published repo)
 *CLAUDE.md
-MD/
+docs/*
+MD/*
 .claude/

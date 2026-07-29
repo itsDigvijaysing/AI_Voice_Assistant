@@ -85,6 +85,7 @@ class SpeechListener:
         # room acoustic tail and any frames already buffered during playback.
         self._echo_hangover_s = echo_hangover_s
         self._last_spoke_at: float | None = None
+        self._was_speaking = False  # edge-detects end-of-reply, to re-arm the wake window below
 
         # Circular buffer to hold pre-activation samples
         self._buffer: deque[NDArray[np.float32]] = deque(maxlen=self.BUFFER_SIZE // self.VAD_SIZE)
@@ -94,6 +95,10 @@ class SpeechListener:
         self._recording_started = False
         self._samples: list[NDArray[np.float32]] = []
         self._gap_counter = 0
+        # Set when this segment's own VAD trigger aborted a still-in-flight turn (barge-in while
+        # speaking/thinking) — tells _process_detected_audio to fold the resulting text into that
+        # unanswered turn instead of queuing a competing one. Consumed (reset) exactly once per segment.
+        self._interrupted_pending_turn = False
 
         self.shutdown_event = shutdown_event
         self.currently_speaking_event = currently_speaking_event
@@ -170,8 +175,17 @@ class SpeechListener:
             vad_confidence: True if voice activity is detected in the sample, False otherwise.
         """
         # Track when the assistant last produced audio, for the half-duplex echo window.
-        if self.currently_speaking_event.is_set():
+        speaking_now = self.currently_speaking_event.is_set()
+        if speaking_now:
             self._last_spoke_at = time.monotonic()
+        elif self._was_speaking and self.wake_word:
+            # Falling edge: the assistant just finished its reply. The window was only ever
+            # refreshed on an ACCEPTED USER utterance, so a long LLM/TTS turn (or a reply that
+            # ends by asking the user something) could consume the whole window and leave no
+            # time to answer. Re-arm here so the window covers "the user's turn to respond",
+            # not just "time since they last spoke".
+            self._wake_session_until = time.monotonic() + self._wake_session_s
+        self._was_speaking = speaking_now
         if self._audio_state is not None:
             if sample.size:
                 rms = float(np.sqrt(np.mean(sample * sample)))
@@ -220,6 +234,7 @@ class SpeechListener:
             if was_speaking or (self.interruptible and self.processing_active_event.is_set()):
                 self.audio_io.stop_speaking()
                 self.processing_active_event.clear()
+                self._interrupted_pending_turn = True
             self._samples = list(self._buffer)  # Clean conversion
             self._recording_started = True
 
@@ -321,6 +336,11 @@ class SpeechListener:
         """
         logger.debug("Detected pause after speech. Processing...")
 
+        # Consumed exactly once per segment, regardless of the outcome below (junk/no-wake-word
+        # segments must not leak a stale flag onto some later, unrelated segment).
+        continuation = self._interrupted_pending_turn
+        self._interrupted_pending_turn = False
+
         detected_text = self.asr(self._samples)
 
         if detected_text:
@@ -332,7 +352,14 @@ class SpeechListener:
             elif self.wake_word and not self.in_wake_session() and not self._wakeword_detected(detected_text):
                 logger.info(f"Required wake word {self.wake_word=} not detected (no active session).")
             else:
-                # (re)arm the conversation window so follow-ups don't need the wake word again
+                # (re)arm the conversation window so follow-ups don't need the wake word again. If
+                # we were NOT already in a session, this utterance is what just reopened it (e.g.
+                # after go_to_sleep). The conversation history can still hold the model's own
+                # earlier "I'm asleep" tool result, and nothing else tells it that's no longer
+                # true — without a cue it just keeps repeating that instead of answering. _wake_note
+                # carries a one-turn system reminder for exactly that transition; llm_processor
+                # inserts it into history alongside this message, not as a separate turn.
+                woke_from_sleep = bool(self.wake_word) and not self.in_wake_session()
                 if self.wake_word:
                     self._wake_session_until = time.monotonic() + self._wake_session_s
                 if self._observability_bus:
@@ -341,14 +368,23 @@ class SpeechListener:
                         kind="user_input",
                         message=trim_message(detected_text),
                     )
-                self.llm_queue.put(
-                    {
-                        "role": "user",
-                        "content": detected_text,
-                        "_enqueued_at": time.time(),
-                        "_lane": "priority",
-                    }
-                )
+                queued_item: dict[str, Any] = {
+                    "role": "user",
+                    "content": detected_text,
+                    "_enqueued_at": time.time(),
+                    "_lane": "priority",
+                }
+                if continuation:
+                    # This segment only exists because it barged in on a turn that hadn't
+                    # finished answering yet — it's the rest of the same thought, not a new one.
+                    queued_item["_continuation"] = True
+                if woke_from_sleep:
+                    queued_item["_wake_note"] = (
+                        "The user just said the wake word again — you are awake and listening "
+                        "now. Disregard any earlier note that you were asleep; respond normally "
+                        "to what they say."
+                    )
+                self.llm_queue.put(queued_item)
                 if self._interaction_state:
                     self._interaction_state.mark_user()
                 self.processing_active_event.set()

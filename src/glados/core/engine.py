@@ -389,11 +389,14 @@ class Glados:
         self.currently_speaking_event = threading.Event()  # Indicates if the assistant is currently speaking
         self.shutdown_event = threading.Event()  # Event to signal shutdown of all threads
 
-        # Initialize shutdown orchestrator for graceful shutdown
+        # Initialize shutdown orchestrator for graceful shutdown. All component threads are
+        # daemon=True (see _register below), so these bounds don't need to be generous "wait for
+        # in-flight work" windows — the _HARD_EXIT_TIMEOUT_S watchdog in _graceful_shutdown is the
+        # real backstop; these just keep the normal case snappy instead of padding every stop.
         self._shutdown_orchestrator = ShutdownOrchestrator(
             shutdown_event=self.shutdown_event,
-            global_timeout=30.0,
-            phase_timeout=10.0,
+            global_timeout=5.0,
+            phase_timeout=2.0,
         )
         if self.autonomy_config.enabled:
             self.autonomy_event_bus = EventBus()
@@ -649,31 +652,33 @@ class Glados:
                     daemon=True,
                 )
 
-        # Define thread configurations with daemon settings and shutdown priorities
-        # daemon=True: Can be killed without waiting (pure input, stateless)
-        # daemon=False: Must be joined (has in-flight state to preserve)
+        # Define thread configurations with daemon settings and shutdown priorities.
+        # AI_Linux: ALL daemon=True. The orchestrator's bounded join IS the grace period for in-flight
+        # state — but a NON-daemon thread is re-joined by the interpreter at exit with no timeout, so a
+        # thread the orchestrator had already given up on (e.g. ToolExecutor mid-30s-tool) hung the
+        # process forever, right after logging "Graceful shutdown complete". Daemon makes it exit.
         thread_configs: dict[str, tuple[Any, bool, ShutdownPriority, queue.Queue | None]] = {
             "LLMProcessor": (
                 self.llm_processor.run,
-                False,  # Has in-flight conversation updates
+                True,  # joined first (PROCESSING) to land in-flight conversation updates
                 ShutdownPriority.PROCESSING,
                 self.llm_queue_priority,
             ),
             "ToolExecutor": (
                 self.tool_executor.run,
-                False,  # Tool results need to be recorded
+                True,  # joined first (PROCESSING) so tool results get recorded
                 ShutdownPriority.PROCESSING,
                 self.tool_calls_queue,
             ),
             "TTSSynthesizer": (
                 self.tts_synthesizer.run,
-                False,  # Pending TTS to complete
+                True,  # joined at OUTPUT to let pending TTS complete
                 ShutdownPriority.OUTPUT,
                 self.tts_queue,
             ),
             "AudioPlayer": (
                 self.speech_player.run,
-                False,  # Audio playing needs to finish
+                True,  # joined at OUTPUT to let playback finish
                 ShutdownPriority.OUTPUT,
                 self.audio_queue,
             ),
@@ -681,7 +686,7 @@ class Glados:
         for index, processor in enumerate(self.autonomy_llm_processors, start=1):
             thread_configs[f"LLMProcessorAutonomy-{index}"] = (
                 processor.run,
-                False,  # Has in-flight conversation updates
+                True,  # joined first (PROCESSING) to land in-flight conversation updates
                 ShutdownPriority.PROCESSING,
                 self.llm_queue_autonomy,
             )
@@ -1045,19 +1050,44 @@ class Glados:
 
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt in main run loop.")
-            # Make sure any ongoing audio playback is stopped
-            if self.currently_speaking_event.is_set():
-                for component in self.component_threads:
-                    if component.name == "AudioPlayer":
-                        self.audio_io.stop_speaking()
-                        self.currently_speaking_event.clear()
-                        break
         finally:
             self._graceful_shutdown()
+
+    # Hard ceiling on the whole graceful sequence below. We're exiting the process either way, so
+    # there is nothing to preserve by waiting out a stuck component — force-exit beats a launcher
+    # that sits on a held flock. Runs on its own daemon thread so a slow-but-still-daemon component
+    # thread can never stop it from firing. NOTE: os._exit() skips atexit (e.g. pipewire_io's AEC
+    # module unload) — acceptable here since the next start's _ensure_aec() reuses an already-loaded
+    # module rather than erroring on it.
+    _HARD_EXIT_TIMEOUT_S = 8.0
+
+    def _arm_shutdown_watchdog(self) -> None:
+        def _watchdog() -> None:
+            time.sleep(self._HARD_EXIT_TIMEOUT_S)
+            logger.warning(
+                "Shutdown watchdog: graceful shutdown exceeded {}s — force-exiting.",
+                self._HARD_EXIT_TIMEOUT_S,
+            )
+            os._exit(1)
+
+        threading.Thread(target=_watchdog, name="ShutdownWatchdog", daemon=True).start()
 
     def _graceful_shutdown(self) -> None:
         """Perform graceful shutdown of all components."""
         logger.info("Beginning graceful shutdown...")
+        self._arm_shutdown_watchdog()
+
+        # Cut any in-flight playback FIRST. AudioPlayer blocks in measure_percentage_spoken() for the
+        # whole clip and only re-checks shutdown_event between clips, so a quit landing mid-sentence
+        # used to keep talking to the end and then trip the 5s join timeout. This was previously done
+        # only on KeyboardInterrupt, which left the overlay's "quit" (it just sets shutdown_event) and
+        # SIGTERM without it.
+        if self.currently_speaking_event.is_set():
+            try:
+                self.audio_io.stop_speaking()
+            except Exception as exc:  # noqa: BLE001 - shutdown must continue regardless
+                logger.warning(f"Could not stop playback during shutdown: {exc}")
+            self.currently_speaking_event.clear()
 
         # Stop the overlay bridge first (releases its polling thread + writes a final state)
         if getattr(self, "_overlay_bridge", None) is not None:
@@ -1066,15 +1096,19 @@ class Glados:
             except Exception:  # noqa: BLE001
                 pass
 
-        # Stop subagents first (they may be using shared resources)
+        # Stop subagents first (they may be using shared resources). Timeouts trimmed to leave the
+        # _HARD_EXIT_TIMEOUT_S watchdog above real headroom in the genuinely-stuck case, while
+        # keeping the normal (already-idle) case fast instead of padding out to the old 5-30s figures.
         if self.subagent_manager:
             logger.debug("Shutting down subagent manager...")
-            self.subagent_manager.shutdown(timeout=5.0)
+            self.subagent_manager.shutdown(timeout=2.0)
 
-        # Stop task manager
+        # Stop task manager. wait=True with no timeout falls through to a raw
+        # ThreadPoolExecutor.shutdown(wait=True) with no bound — a stuck task would then hang the
+        # whole process (and the launcher's flock) forever.
         if self.autonomy_tasks:
             logger.debug("Shutting down task manager...")
-            self.autonomy_tasks.shutdown(wait=True)
+            self.autonomy_tasks.shutdown(wait=True, timeout=2.0)
 
         # Use orchestrator for coordinated thread shutdown
         results = self._shutdown_orchestrator.initiate_shutdown()

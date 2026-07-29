@@ -110,7 +110,10 @@ class MCPManager:
         if self._shutdown_async:
             self._loop.call_soon_threadsafe(self._shutdown_async.set)
         self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join(timeout=5.0)
+        # Daemon thread (see __init__); the process is exiting either way, so this just needs to be
+        # short enough to leave the engine's shutdown watchdog real headroom, not a "wait for
+        # in-flight MCP calls" window.
+        self._thread.join(timeout=2.0)
 
     def get_tool_definitions(self) -> list[dict[str, Any]]:
         with self._tool_lock:
@@ -167,7 +170,16 @@ class MCPManager:
             resource_counts: dict[str, int] = {}
             for (server_name, _uri) in self._resource_cache.keys():
                 resource_counts[server_name] = resource_counts.get(server_name, 0) + 1
-        connected = set(self._sessions.keys())
+        # _sessions is mutated on the MCP event-loop thread (connect/disconnect); snapshot
+        # defensively so a concurrent insert/pop can't raise "dictionary changed size during
+        # iteration". A transient miss just shows a server as (dis)connected until the next refresh.
+        connected: set[str] = set()
+        for _ in range(3):
+            try:
+                connected = set(self._sessions)
+                break
+            except RuntimeError:
+                continue
         tool_counts: dict[str, int] = {}
         for entry in tools:
             tool_counts[entry.server] = tool_counts.get(entry.server, 0) + 1
@@ -274,8 +286,13 @@ class MCPManager:
             # The MCP SDK scrubs the child env to a safe default (HOME/PATH/SHELL/TERM/USER/LOGNAME) and DROPS
             # the display/session vars — so GUI launches (gtk-launch/xdg-open/brave-browser) and the portal
             # (XDG_RUNTIME_DIR/DBUS) fail. Passing a non-None env MERGES with that default, so we only add the
-            # missing GUI/session vars from our own environment.
-            _GUI_ENV = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP")
+            # missing GUI/session vars from our own environment. XAUTHORITY is required too: any Xwayland
+            # client (Chromium/Electron apps, X11-only tools) fails its auth handshake without it even
+            # with DISPLAY set — seen as "Authorization required, but no authorization protocol specified".
+            _GUI_ENV = (
+                "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+                "XDG_CURRENT_DESKTOP", "XAUTHORITY",
+            )
             env = {**{k: os.environ[k] for k in _GUI_ENV if k in os.environ}, **(config.env or {})}
             params = StdioServerParameters(command=config.command, args=config.args, env=(env or None))
             # Suppress subprocess stderr to prevent MCP logs from corrupting TUI

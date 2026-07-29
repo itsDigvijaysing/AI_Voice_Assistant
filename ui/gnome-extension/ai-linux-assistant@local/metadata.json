@@ -1,13 +1,13 @@
 {
   "uuid": "ai-linux-assistant@local",
   "name": "AI Linux Assistant Overlay",
-  "description": "On-screen orb + transcript for the AI Linux Assistant, with listening-mode controls (always / wake / click + mute). Reads state from the engine's overlay bridge and sends control commands back.",
+  "description": "On-screen orb + transcript for the AI Linux Assistant: a top-bar 'AI' monogram, START/STOP control, a voice picker with click-to-play previews, and mute. Reads state from the engine's overlay bridge and sends control commands back.",
   "shell-version": [
     "48",
     "49",
     "50"
   ],
-  "version": 6,
+  "version": 7,
   "url": "local",
-  "version-name": "2.4.2"
+  "version-name": "2.5.0"
 }
