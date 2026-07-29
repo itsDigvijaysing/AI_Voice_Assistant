@@ -13,7 +13,6 @@
 #   ./ai-linux say "hello"     speak a phrase and exit
 #
 # Flags (combine with any command above):
-#   --groq            use the Groq cloud brain (needs GROQ_API_KEY); default is local
 #   --local           force the local qwen3:4b brain (the default)
 #   --no-actions      DON'T arm shell / desktop actions (they are armed by default so the
 #                     assistant can mute, open apps, run commands; autonomy is always blocked)
@@ -374,7 +373,6 @@ cmd_setup(){
   c_say "Setup complete"
   [ -f "$MANIFEST" ] && c_ok "changes recorded in $MANIFEST (./ai-linux uninstall reverts them)"
   echo "   Launch:    ./ai-linux        (or click 'AI Linux Assistant' in the app grid)"
-  echo "   Groq:      export GROQ_API_KEY=… ; ./ai-linux --groq"
   echo "   Actions:   ./ai-linux --allow-actions"
   echo "   Uninstall: ./ai-linux uninstall   (reverts everything; --dry-run to preview)"
 }
@@ -551,7 +549,6 @@ ensure_ready_for_run(){
 SUB="start"; ARGS=()
 for a in "$@"; do
   case "$a" in
-    --groq)          CONFIG="$HERE/configs/ai_linux_groq.yaml" ;;
     --local)         CONFIG="$HERE/configs/ai_linux_config.yaml" ;;
     --allow-actions) ACTIONS=on ;;
     --no-actions)    ACTIONS=off ;;
@@ -644,11 +641,6 @@ case "$SUB" in
               off)  unset GLADOS_ALLOW_ACTIONS ;;   # --no-actions must also override an INHERITED env value
               auto) { [ "$SUB" = "start" ] || [ "$SUB" = "tui" ]; } && export GLADOS_ALLOW_ACTIONS=1 ;;
             esac
-            # Groq brain needs an API key before the engine gets anywhere (say/download don't use the LLM).
-            if [ "${CONFIG##*/}" = "ai_linux_groq.yaml" ] && { [ "$SUB" = "start" ] || [ "$SUB" = "tui" ]; } \
-               && [ -z "${GROQ_API_KEY:-}${GLADOS_API_KEY:-}" ]; then
-              c_err "--groq needs GROQ_API_KEY (or GLADOS_API_KEY) exported in the environment"; exit 1
-            fi
             ensure_ready_for_run
             if [ "$BARGE" = "1" ]; then
               if command -v pw-record >/dev/null 2>&1 && command -v pw-play >/dev/null 2>&1; then

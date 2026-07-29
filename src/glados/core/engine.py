@@ -134,11 +134,11 @@ class GladosConfig(BaseModel):
     def _resolve_api_key_from_env(self) -> "GladosConfig":
         """Fall back to an API key from the environment when api_key is not set.
 
-        Checks GLADOS_API_KEY, then GROQ_API_KEY, then MINIMAX_API_KEY — so a cloud
+        Checks GLADOS_API_KEY, then MINIMAX_API_KEY — so an (optional, opt-in) cloud
         brain's key is supplied via env and never committed in a config file.
         """
         if self.api_key is None:
-            for var in ("GLADOS_API_KEY", "GROQ_API_KEY", "MINIMAX_API_KEY"):
+            for var in ("GLADOS_API_KEY", "MINIMAX_API_KEY"):
                 env_key = os.environ.get(var)
                 if env_key:
                     self.api_key = env_key
@@ -249,7 +249,7 @@ def _parse_oneshot_response(resp: dict, is_ollama: bool) -> str:
     """Extract reply text from a non-streaming LLM response. Pure (offline-testable).
 
     Ollama /api/chat -> {"message": {"content": ...}} (or legacy {"response": ...});
-    OpenAI/Groq -> {"choices": [{"message": {"content": ...}}]}.
+    OpenAI-compatible -> {"choices": [{"message": {"content": ...}}]}.
     """
     if is_ollama:
         text = (resp.get("message") or {}).get("content") or resp.get("response") or ""
@@ -1509,7 +1509,7 @@ class Glados:
     def _oneshot_llm(self, prompt: str) -> str:
         """One-shot, non-streaming call to the configured brain (used by /tidy); returns the reply text.
 
-        Handles both endpoint shapes: native Ollama ``/api/chat`` and OpenAI/Groq ``/chat/completions``.
+        Handles both endpoint shapes: native Ollama ``/api/chat`` and OpenAI-compatible ``/chat/completions``.
         """
         import requests
         from urllib.parse import urlparse

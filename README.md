@@ -6,9 +6,6 @@ your machine (open apps, run commands, answer questions) through a confirmed, sa
 Everything in the runtime path runs **locally and open-source**. No cloud, no API keys required.
 Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and speech on the CPU.
 
-> Built by vendoring & evolving the excellent [dnhkng/GLaDOS](https://github.com/dnhkng/GLaDOS) engine.
-> Design notes & decisions: [PLAN.md](PLAN.md).
-
 ---
 
 ## Features
@@ -20,6 +17,8 @@ Tuned to fit a **6 GB GPU** (RTX 3060 Mobile) by keeping the LLM on the GPU and 
   screenshot, open app/link/folder, web/YouTube search, media, night light, do-not-disturb, settings,
   terminal, clipboard) the model calls directly, plus a general `shell` fallback. Reasoning is **on** so the
   small model reliably picks the right tool (verified 22/22 in a live test).
+- **Todoist tasks** — "what's on my list today" / "add a task to go for a walk" via `mcp.todoist.*`
+  (needs a `TODOIST_API_TOKEN` in the environment).
 - **Safety gate** — irreversible actions (shell, desktop tools) are denied unless you explicitly arm them;
   a catastrophic-command denylist and kernel-enforced resource caps (`systemd-run`) back it up.
 - **On-screen overlay** (GNOME Shell extension) — top-right orb + transcript that tracks state, with
@@ -72,6 +71,14 @@ sequenceDiagram
 
 ## Quick start
 
+Get the code from the [Releases page](../../releases/latest) (download and extract the source archive) or
+clone the repo directly:
+
+```bash
+git clone https://github.com/itsDigvijaysing/AI_Linux_Assistant.git
+cd AI_Linux_Assistant
+```
+
 One script does everything — install and run:
 
 ```bash
@@ -88,7 +95,7 @@ Then, day to day:
 ./ai-linux download   # (re)fetch the ONNX speech weights
 ./ai-linux say "hi"   # speak a phrase and exit
 ./ai-linux uninstall  # revert everything setup changed (--dry-run to preview; --purge to also drop env/models/weights)
-# flags: --groq (cloud brain)   --local (default)   --no-actions (don't arm shell/desktop actions)
+# flags: --no-actions (don't arm shell/desktop actions)
 #        --half-duplex (turn off voice barge-in)   --overlay-mode=always|wake|click
 ./ai-linux --version  # print the repo version (also shown in the overlay menu header + prefs)
 ```
@@ -115,24 +122,22 @@ All settings live in [`configs/ai_linux_config.yaml`](configs/ai_linux_config.ya
 | `personality_preprompt` | system prompt / persona |
 | `mcp_servers` | the tools the assistant can call |
 
-### Local or Groq brain
+### Local-first by design
 
-Two interchangeable brains — **speech, tools, and the safety gate are identical; only the LLM differs**:
+The brain is `qwen3:4b` via [Ollama](https://ollama.com), running on your GPU — nothing leaves the machine.
+Switch to the lighter `qwen3:1.7b` any time via the Settings panel or `GLADOS_LLM_MODEL`. Speech, tools, and
+the safety gate are all local and identical regardless of which local model you pick.
 
-| Brain | Config | Run | Notes |
-|---|---|---|---|
-| **Local** (default) | `configs/ai_linux_config.yaml` | `./ai-linux` | `qwen3:4b` via Ollama (GPU); lighter `qwen3:1.7b` via Settings / `GLADOS_LLM_MODEL` |
-| **Groq API** | `configs/ai_linux_groq.yaml` | `export GROQ_API_KEY=… && ./ai-linux --groq` | faster/stronger cloud model; key read from env, never stored |
-
-Any other OpenAI-compatible endpoint works too — point `completion_url`/`api_key` at it. **Local stays the
-default focus.**
+If you ever want a stronger/cloud model for harder tasks, the engine can point at any OpenAI-compatible
+endpoint — set `llm_model` / `completion_url` / `api_key` in the config (key read from env, never stored).
+This is a manual, opt-in edit; there's no cloud brain wired in or enabled by default.
 
 ---
 
 ## Tools (MCP servers)
 
 Tools are exposed to the model as `mcp.<server>.<tool>`. The menu is deliberately **lean** — a short, stable
-set of typed tools is what makes a small model reliably pick the right one (verified). **5 servers are active:**
+set of typed tools is what makes a small model reliably pick the right one (verified). **6 servers are active:**
 
 | Server | Tools | Purpose | Gated |
 |---|---|---|:---:|
@@ -141,6 +146,7 @@ set of typed tools is what makes a small model reliably pick the right one (veri
 | **`skills_actions`** | `set_screen_brightness`, `set_volume`, `lock_screen`, `take_screenshot`, `open_app_or_link`, `search_web`, `control_media`, `toggle_night_light`, `set_do_not_disturb`, `open_settings`, `open_terminal`, `open_file_manager`, `clipboard` | the **13 typed desktop actions** — the model's main capability surface | yes |
 | **`shell`** | `run_command` | general local command fallback (as you, never sudo) | yes |
 | `voice` | `set_voice` | change the assistant's own TTS voice live | — |
+| `todoist` | `list_tasks`, `create_task` | check/add Todoist tasks (needs `TODOIST_API_TOKEN` in env) | — |
 
 Each `skills_actions` tool builds its exact command and runs it through the **same** gated + denylisted
 executor as `shell` (`mcp/shell_exec.py::run_shell`), so nothing bypasses the safety layer. Built-in (non-MCP)
@@ -236,33 +242,25 @@ after edits).
 ```
 ai-linux                       # single launcher + installer (setup · doctor · run · --version)
 VERSION                        # repo version (MAJOR.MINOR.PATCH), kept in sync with the extension
-configs/ai_linux_config.yaml   # active config  (+ ai_linux_groq.yaml for the Groq brain)
+configs/ai_linux_config.yaml   # active config
 skills/                        # SKILL-*.md reference library (docs-only since the native-tools pivot)
 ui/gnome-extension/…/          # overlay: extension.js + settingsLib.js (shared core) + prefs.js + windowControl.js
-src/glados/                    # vendored GLaDOS engine (core/ mcp/ overlay/ tools/ ASR/ TTS/ audio_io/ …)
+src/glados/                    # vendored engine (core/ mcp/ overlay/ tools/ ASR/ TTS/ audio_io/ …)
 models/                        # model configs + ONNX speech weights (weights gitignored)
 data/                          # ASR warm-up sample + demo assets
-PLAN.md                        # design notes & decisions
 ```
 
 ---
 
 ## Status
-**v2.4.2.** v1 plus the native-tools pivot (skills are typed function-calling tools, reasoning on), a
-shared-core Settings/preferences system with versioning, kernel-enforced shell resource caps, and the
-window-control service merged into the single overlay extension. Verified: configs load; safety gate + the
-autonomy hard-floor; catastrophic denylist (42 blocked / 19 benign); and a **live tool-calling test against
-`qwen3:4b` — 22/22**, the model both describing its abilities correctly and picking the right tool every time.
-Runtime is fully provisioned locally (Ollama + `qwen3:4b`, all ONNX weights). Remaining user steps: the first
-live **voice run** (mic + GPU) and **one logout/login** to load the extension. See [PLAN.md](PLAN.md) for the
-roadmap (delegated executor, richer memory/RAG, per-action voice confirmation).
+**v2.5.1.** The native-tools pivot (skills are typed function-calling tools, reasoning on), a shared-core
+Settings/preferences system with versioning, kernel-enforced shell resource caps, the window-control service
+merged into the single overlay extension, and a Todoist integration (check/add tasks by voice). Verified:
+configs load; safety gate + the autonomy hard-floor; catastrophic denylist (42 blocked / 19 benign); and a
+**live tool-calling test against `qwen3:4b` — 22/22**, the model both describing its abilities correctly and
+picking the right tool every time. Runtime is fully provisioned locally (Ollama + `qwen3:4b`, all ONNX
+weights). Remaining user steps: the first live **voice run** (mic + GPU) and **one logout/login** to load the
+extension.
 
-## Credits & licenses
-- Engine: **[dnhkng/GLaDOS](https://github.com/dnhkng/GLaDOS)** (MIT) — vendored; see [`LICENSE.GLaDOS`](LICENSE.GLaDOS).
-- Desktop control: **[agent-sh/computer-use-linux](https://github.com/agent-sh/computer-use-linux)** (MIT).
-- Default TTS: **[supertone-inc/supertonic](https://github.com/supertone-inc/supertonic)** (code MIT; weights OpenRAIL-M) — ONNX, fetched once on first use.
-- Speech: Parakeet (ASR), SuperTonic + Kokoro (TTS), Silero (VAD). Brain: Ollama + `qwen3:4b` / `qwen3:1.7b` (local) or [Groq](https://groq.com) (API).
-- Window-control D-Bus service vendored (MIT) from **[computer-use-linux](https://github.com/avifenesh/computer-use-linux)**; see [`LICENSE.computer-use-linux`](LICENSE.computer-use-linux).
-- Pattern references: Newelle, RealtimeVoiceChat, Fabric, AIChat.
-
-Vendored components retain their original licenses.
+## License
+MIT — see [LICENSE](LICENSE). Built with thanks to the open-source community.

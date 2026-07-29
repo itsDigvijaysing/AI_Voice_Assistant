@@ -23,9 +23,11 @@ threat model, what's guaranteed, and the safeguards.
   and **`./ai-linux uninstall`** reverts exactly those deltas (`--dry-run` to preview, `--purge` for a deep
   clean). Nothing is installed that you can't cleanly remove.
 - **No inbound network.** No listening socket is opened. Ollama is reached only on `127.0.0.1:11434`;
-  an optional cloud brain (Groq/OpenAI-compatible) is outbound HTTPS. MCP tool servers use stdio.
-- **No secrets in the repo.** API keys are read from environment variables only (`GROQ_API_KEY` /
-  `GLADOS_API_KEY` / …); configs ship `api_key: null`.
+  the assistant is local-first by default — a cloud brain is only reached if you manually opt in by
+  pointing `completion_url` at an OpenAI-compatible endpoint, and the Todoist tools reach
+  `api.todoist.com` only if `TODOIST_API_TOKEN` is set. MCP tool servers use stdio.
+- **No secrets in the repo.** API keys/tokens are read from environment variables only (`GLADOS_API_KEY` /
+  `TODOIST_API_TOKEN` / …); configs ship `api_key: null`.
 - **User-private state.** Runtime/IPC files (`$XDG_RUNTIME_DIR/ai-linux/`) and `data/` are created `0700`;
   TTS temp files use unpredictable names and are deleted after playback.
 
