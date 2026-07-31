@@ -32,6 +32,24 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # GNOME-launcher click or a run from another directory would otherwise miss the weights.
 cd "$HERE" || { echo "ERROR: cannot cd to $HERE"; exit 1; }
 
+# Load .env (KEY=value per line, '#' comments/blank lines ignored) into the environment for this
+# run, if present — the simplest place to keep secrets like TODOIST_API_TOKEN instead of your shell
+# profile. Copy .env.example -> .env and fill in real values; .env is gitignored, never committed.
+load_dotenv(){
+  local f="$HERE/.env" key val
+  [ -f "$f" ] || return 0
+  while IFS='=' read -r key val; do
+    key="${key#export }"
+    case "$key" in ''|'#'*) continue ;; esac
+    case "$val" in
+      \"*\") val="${val#\"}"; val="${val%\"}" ;;
+      \'*\') val="${val#\'}"; val="${val%\'}" ;;
+    esac
+    export "$key=$val"
+  done < "$f"
+}
+load_dotenv
+
 ENV_NAME="AI_Linux"
 MODEL="qwen3:4b"   # default brain; Settings panel can switch to qwen3:1.7b (writes settings.json)
 CONFIG="$HERE/configs/ai_linux_config.yaml"

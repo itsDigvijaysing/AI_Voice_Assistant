@@ -29,3 +29,6 @@ data/skills_vectors.json
 docs/*
 MD/*
 .claude/
+
+# Local secrets (API tokens etc.) — copy .env.example to .env and fill in real values
+.env
