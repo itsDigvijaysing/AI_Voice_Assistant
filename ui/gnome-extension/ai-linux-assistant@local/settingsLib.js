@@ -1,9 +1,5 @@
-// Shared settings core — the SINGLE implementation used by BOTH the shell extension
-// (extension.js) and the preferences window (prefs.js, a separate gjs process).
-// Storage contract: ~/.config/ai-linux/settings.json holds ONLY user-touched keys; DEFAULTS are
-// display-time fallbacks and are never written back (the launcher treats present keys as explicit
-// user choices). Live-apply channels go through the engine bridge's runtime files.
-// This module imports only GLib so it is safe in both processes.
+// Shared settings core used by BOTH extension.js and prefs.js (separate gjs processes; GLib only).
+// Storage contract: settings.json holds ONLY user-touched keys — defaults are never written back.
 
 import GLib from 'gi://GLib';
 

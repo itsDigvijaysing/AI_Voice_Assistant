@@ -1,8 +1,5 @@
-// AI Linux Assistant overlay — GNOME Shell extension (GJS / ESM, GNOME 48–50).
-//
-// Single entry point: the top-bar icon starts/stops the engine, shows honest state, and controls it.
-// The engine writes live state to $XDG_RUNTIME_DIR/ai-linux/state.json (~2s heartbeat ts); this reads
-// it to know if the engine is running and to drive the orb. Control goes back via control.json.
+// AI Linux Assistant overlay — GNOME Shell extension (GJS / ESM, GNOME 48–50). The top-bar icon is the
+// single entry point; state comes from state.json (~2s heartbeat), control goes back via control.json.
 
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -38,10 +35,8 @@ const PIN_TIMEOUT_MS = 30000;
 const LOG_MAX = 24;
 const STARTING_TIMEOUT = 60000;   // stop the "starting" blink if the engine never comes up
 
-// A flowing multi-colour "plasma" orb drawn with Cairo on an St.DrawingArea at ~30fps. Cairo (not a GPU
-// shader) renders identically offline and live, so the look is predictable. Each state has its OWN palette,
-// motion mode and speed so it reads at a glance: idle drifts slowly, listening ripples, thinking swirls
-// fast, speaking pulses energetically. 2-3 colours per state; soft blobs orbit and blend inside the sphere.
+// Cairo-drawn "plasma" orb on an St.DrawingArea at ~30fps — Cairo renders identically offline and live,
+// unlike a GPU shader. Each state gets its own palette, motion mode and speed so it reads at a glance.
 const ORB_PARAMS = {
     loading:   {colors: [[1.00, 0.78, 0.25], [1.00, 0.50, 0.12], [1.00, 0.88, 0.45]], speed: 1.8,  amp: 0.07, blobs: 3, mode: 'pulse'},
     idle:      {colors: [[0.28, 0.40, 0.95], [0.45, 0.30, 0.88], [0.16, 0.62, 0.86]], speed: 0.45, amp: 0.04, blobs: 3, mode: 'drift'},
@@ -197,9 +192,8 @@ class Overlay extends St.BoxLayout {
             x_align: Clutter.ActorAlign.END,
         });
         this._orbStack.add_child(this._orb);
-        // orb body click -> _onOrbClick (click-to-talk; wired in enable()). Use the button-release-event
-        // signal, not Clutter.ClickAction — that class was removed in the Mutter 48+ gesture refactor
-        // (GNOME 50), where `new Clutter.ClickAction()` throws "is not a constructor".
+        // Use button-release-event, not Clutter.ClickAction — that class was removed in the Mutter 48+
+        // gesture refactor (GNOME 50), where `new Clutter.ClickAction()` throws "is not a constructor".
         this._orbStack.reactive = true;
         this._onOrbClick = null;
         this._orbStack.connect('button-release-event', () => {
@@ -522,9 +516,8 @@ export default class AiLinuxOverlayExtension extends Extension {
             logError(e, 'ai-linux: dir monitor failed');
         }
         try {
-            // Keep the panel in ALWAYS-SYNC with the shared store: any settings.json write —
-            // from the prefs window, this menu, or by hand — refreshes the menu AND the
-            // window-control service immediately (no relogin needed to start/stop it).
+            // Any settings.json write — prefs window, this menu, or by hand — refreshes the menu and
+            // the window-control service immediately, with no relogin.
             this._settingsMon = Gio.File.new_for_path(SETTINGS_PATH).monitor_file(Gio.FileMonitorFlags.NONE, null);
             this._settingsMonId = this._settingsMon.connect('changed', () => {
                 this._indicator?.refreshSettings();
@@ -671,9 +664,8 @@ export default class AiLinuxOverlayExtension extends Extension {
         // just changed; plain idle/listening (mic open, waiting) does NOT keep it open.
         const active = ACTIVE_STATES.includes(state) || (nowMs - this._lastTranscriptTs < TRANSCRIPT_FRESH_MS);
         if (active) this._activeUntil = nowMs + IDLE_HIDE_MS;   // keep open until 10s after the last activity
-        // Show while: pinned, click-to-talk (orb must stay reachable), a wake conversation window is open,
-        // or there was recent activity. In wake mode this means the overlay appears on the wake word and
-        // goes away after the session's silence timeout.
+        // Show while pinned, in click-to-talk, during a wake session, or on recent activity — so in wake
+        // mode the overlay appears on the wake word and goes after the session's silence timeout.
         const visible = this._pinned || this._mode === 'click' || this._session || nowMs < this._activeUntil;
         if (visible) this._fadeIn(); else this._fadeOut();
     }
