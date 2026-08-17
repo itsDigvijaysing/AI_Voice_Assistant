@@ -1,7 +1,7 @@
 """Live TTS voice switcher exposed over MCP (AI_Linux addition).
 
 Lets the assistant change its own speaking voice on request ("use a female voice").
-It does NOT touch the audio device — it drops the requested voice into the overlay
+It does NOT touch the audio device, it drops the requested voice into the overlay
 bridge's ``voice.json`` control file in ``$XDG_RUNTIME_DIR/ai-linux/``; the running engine
 reads it (~0.1 s) and applies it to the live synthesizer, so the next reply uses the new
 voice with no restart. Ungated (changing one's own voice is harmless), and a no-op if the
@@ -38,7 +38,7 @@ _VOICES: dict[str, str] = {
     "F5": "female",
 }
 
-# Kokoro (fallback engine) ids look like ``am_michael`` — match that shape so real ids pass and typos
+# Kokoro (fallback engine) ids look like ``am_michael``, match that shape so real ids pass and typos
 # are rejected up front. The engine bridge is still the final validator.
 _KOKORO_RE = re.compile(r"[a-z]{2}_[a-z]+")
 
@@ -66,7 +66,7 @@ def set_voice(voice: str) -> str:
     """Change the assistant's own speaking voice for the rest of the conversation.
 
     Args:
-        voice: a SuperTonic voice id — male ``M1``/``M3``/``M4``/``M5`` or female
+        voice: a SuperTonic voice id, male ``M1``/``M3``/``M4``/``M5`` or female
             ``F1``/``F2``/``F3``/``F4``/``F5`` (e.g. pass ``"F3"`` for a female voice).
 
     Takes effect on the next spoken reply; no restart needed. Returns JSON {ok, voice}.

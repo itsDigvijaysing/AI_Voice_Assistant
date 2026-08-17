@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI Linux Assistant — rdev liquid-glass technique (vanilla port)</title>
+<title>AI Linux Assistant, rdev liquid-glass technique (vanilla port)</title>
 <!--
-  Real refraction port of rdev/liquid-glass-react (MIT) into plain HTML/CSS/SVG — no React.
+  Real refraction port of rdev/liquid-glass-react (MIT) into plain HTML/CSS/SVG, no React.
   Technique: an empty .glass__warp span gets `backdrop-filter: blur()+saturate()` AND
   `filter: url(#glass-filter)`. The SVG filter loads a precomputed lens displacement map
   (feImage) and runs 3 feDisplacementMap passes (R/G/B at slightly different scales) to bend
   + chromatically split the backdrop at the edges, then masks it so the centre stays clean.
   Refraction is Chromium-only (Brave = fine). Finalized defaults: overLight tint on, blur 8,
-  refraction scale 70 — readable on both dark and bright backgrounds.
+  refraction scale 70, readable on both dark and bright backgrounds.
   Displacement map asset: from rdev/liquid-glass-react src/utils.ts (MIT).
 -->
 <style>
@@ -51,7 +51,7 @@
   #persona { width: 100px; height: 100px; transition: filter .4s ease; }
   .overlay[data-state="idle"] #persona { filter: brightness(0) invert(1) drop-shadow(0 0 11px rgba(255,255,255,.65)); }
 
-  /* ===== rdev liquid glass — overLight + blur 8 baked in as the default ===== */
+  /* ===== rdev liquid glass, overLight + blur 8 baked in as the default ===== */
   .glass { position: relative; width: 100%; box-sizing: border-box;
     border-radius: 28px; overflow: hidden; isolation: isolate;
     padding: 16px 17px 17px;
@@ -61,7 +61,7 @@
     filter: url(#glass-filter);
     backdrop-filter: blur(8px) saturate(170%);
     -webkit-backdrop-filter: blur(8px) saturate(170%); }
-  /* overLight tint + specular highlight — keeps the panel readable on bright backgrounds too */
+  /* overLight tint + specular highlight, keeps the panel readable on bright backgrounds too */
   .glass__tint { position: absolute; inset: 0; z-index: 1; border-radius: inherit;
     background: rgba(20,22,30,.22);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 1px rgba(0,0,0,.18),
@@ -93,7 +93,7 @@
     <div class="col">
       <h1>Good evening, King</h1>
       <p class="sub">Here is what's happening on your machine right now.</p>
-      <p>The assistant runs fully local: speech in on the CPU, the language model on the GPU, and your desktop stays private. This text exists so the glass actually has edges and colour to refract — the more detail behind it, the more obvious the lens bending becomes.</p>
+      <p>The assistant runs fully local: speech in on the CPU, the language model on the GPU, and your desktop stays private. This text exists so the glass actually has edges and colour to refract, the more detail behind it, the more obvious the lens bending becomes.</p>
       <div class="pills"><span>Wayland</span><span>GNOME&nbsp;50</span><span>Ollama</span><span>qwen3:4b</span><span>Kokoro&nbsp;TTS</span><span>Parakeet&nbsp;ASR</span></div>
       <div class="code">$ ./ai-linux --groq
 Starting Ollama...
@@ -108,7 +108,7 @@ Listening...
         <div class="card c2">Battery 80%</div>
         <div class="card c3">Disk 604 GB</div>
       </div>
-      <p>Unlike a plain <code>backdrop-filter: blur()</code>, this layer runs an SVG displacement map so the edges <em>bend and split</em> the colours behind them — real refraction, like Apple's glass. Toggle the background to white to see how it survives the wash-out scenario.</p>
+      <p>Unlike a plain <code>backdrop-filter: blur()</code>, this layer runs an SVG displacement map so the edges <em>bend and split</em> the colours behind them, real refraction, like Apple's glass. Toggle the background to white to see how it survives the wash-out scenario.</p>
       <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
     </div>
   </div>

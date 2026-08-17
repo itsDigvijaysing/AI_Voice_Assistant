@@ -2,7 +2,7 @@
 
 The engine usually injects the relevant skill's exact command into the prompt automatically (so the
 model acts in one tool call), making find_skill a fallback for when no capability hint was injected.
-Retrieval lives in core/skills_index.py — single source of truth, also used in-process by the engine.
+Retrieval lives in core/skills_index.py, single source of truth, also used in-process by the engine.
 """
 
 from __future__ import annotations

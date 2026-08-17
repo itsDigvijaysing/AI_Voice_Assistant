@@ -4,7 +4,7 @@ Instead of retrieving a SKILL-*.md and injecting a command string into the user 
 model can't reliably reason about and which misfired on ambient words), each desktop capability is a
 NAMED, typed tool the model selects natively. The tool list IS the model's capability list, so it is
 genuinely aware of what it can do. Each tool builds the exact command from the matching SKILL-*.md and
-runs it through the shared gated executor (glados.mcp.shell_exec.run_shell) — so the destructive-command
+runs it through the shared gated executor (glados.mcp.shell_exec.run_shell), so the destructive-command
 denylist and the action gate (mcp.skills_actions.* is a gated family) apply exactly as for mcp.shell.
 """
 
@@ -49,9 +49,9 @@ def _launch(command: str) -> str:
     and the /dev/null redirect keeps the child from holding run_shell's capture pipes open.
     resource_caps=False: the app must NOT live out its life inside run_shell's capped scope.
 
-    setsid -f forking successfully always returns 0, even if the app then fails to start — so
+    setsid -f forking successfully always returns 0, even if the app then fails to start, so
     once detached there is no rc left to trust. The one failure mode we CAN check synchronously,
-    with no race, is "the binary isn't on PATH at all" — do that before forking so a typo'd/
+    with no race, is "the binary isn't on PATH at all", do that before forking so a typo'd/
     uninstalled app gets an honest error instead of a false "opened" (matches _launch_app's
     existing which() check; this covers the other callers, e.g. gnome-control-center).
     """
@@ -126,7 +126,7 @@ def set_volume(action: str = "", percent: int = -1) -> str:
 
 @mcp.tool()
 def lock_screen() -> str:
-    """Lock the screen. Locking ONLY — this never suspends, sleeps, logs out, or turns off the computer."""
+    """Lock the screen. Locking ONLY, this never suspends, sleeps, logs out, or turns off the computer."""
     return _run("loginctl lock-session")
 
 
@@ -149,7 +149,7 @@ def open_app_or_link(target: str) -> str:
         url = t if "://" in t else "https://" + t
         return _run(f"xdg-open {shlex.quote(url)}")
     if t.startswith(("/", "~", "$HOME")):
-        # shlex.quote single-quotes the arg, which suppresses ~ and $HOME expansion — so resolve them
+        # shlex.quote single-quotes the arg, which suppresses ~ and $HOME expansion, so resolve them
         # to an absolute path FIRST (xdg-open does no expansion itself), then quote the resolved path.
         p = os.path.expanduser(os.path.expandvars(t))
         return _run(f"xdg-open {shlex.quote(p)}")

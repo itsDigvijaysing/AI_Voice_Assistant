@@ -1,4 +1,4 @@
-// AI Linux Assistant overlay — GNOME Shell extension (GJS / ESM, GNOME 48–50). The top-bar icon is the
+// AI Linux Assistant overlay: GNOME Shell extension (GJS / ESM, GNOME 48–50). The top-bar icon is the
 // single entry point; state comes from state.json (~2s heartbeat), control goes back via control.json.
 
 import GObject from 'gi://GObject';
@@ -14,12 +14,12 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-// Shared settings core (same module the prefs window uses — one source of truth).
+// Shared settings core (same module the prefs window uses, one source of truth).
 import {
     RUNTIME_DIR, STATE_PATH, SETTINGS_PATH, SETTINGS_DEFAULTS, MENU_VOICES, WAKE_WORDS,
     readSettings, saveKey, writeControl, writeVoice, wakeControl,
 } from './settingsLib.js';
-// Vendored (MIT) window-control D-Bus service — dormant unless the window_control setting is on.
+// Vendored (MIT) window-control D-Bus service, dormant unless the window_control setting is on.
 import {WindowControl} from './windowControl.js';
 
 const DESKTOP_ID = 'ai-linux-assistant.desktop';
@@ -35,7 +35,7 @@ const PIN_TIMEOUT_MS = 30000;
 const LOG_MAX = 24;
 const STARTING_TIMEOUT = 60000;   // stop the "starting" blink if the engine never comes up
 
-// Cairo-drawn "plasma" orb on an St.DrawingArea at ~30fps — Cairo renders identically offline and live,
+// Cairo-drawn "plasma" orb on an St.DrawingArea at ~30fps. Cairo renders identically offline and live,
 // unlike a GPU shader. Each state gets its own palette, motion mode and speed so it reads at a glance.
 const ORB_PARAMS = {
     loading:   {colors: [[1.00, 0.78, 0.25], [1.00, 0.50, 0.12], [1.00, 0.88, 0.45]], speed: 1.8,  amp: 0.07, blobs: 3, mode: 'pulse'},
@@ -159,7 +159,7 @@ class Orb extends St.DrawingArea {
             cr.setSourceRGBA(mn(c0[0] * 1.5), mn(c0[1] * 1.5), mn(c0[2] * 1.7), 0.6);
             cr.arc(cx, cy, Rs * 0.98, 0, 2 * Math.PI); cr.stroke();
 
-            // glassy specular highlight (upper-left) — static, sells the 3D sphere
+            // glassy specular highlight (upper-left); static, sells the 3D sphere
             const hx = cx - Rs * 0.34, hy = cy - Rs * 0.36;
             let hl = new cairo.RadialGradient(hx, hy, 0, hx, hy, Rs * 0.55);
             hl.addColorStopRGBA(0, 1, 1, 1, 0.55);
@@ -192,7 +192,7 @@ class Overlay extends St.BoxLayout {
             x_align: Clutter.ActorAlign.END,
         });
         this._orbStack.add_child(this._orb);
-        // Use button-release-event, not Clutter.ClickAction — that class was removed in the Mutter 48+
+        // Use button-release-event, not Clutter.ClickAction: that class was removed in the Mutter 48+
         // gesture refactor (GNOME 50), where `new Clutter.ClickAction()` throws "is not a constructor".
         this._orbStack.reactive = true;
         this._onOrbClick = null;
@@ -202,7 +202,7 @@ class Overlay extends St.BoxLayout {
         });
         this.add_child(this._orbStack);
 
-        // transcript panel (translucent; no Shell blur — its square corners poked past the rounding)
+        // transcript panel (translucent; no Shell blur, whose square corners poked past the rounding)
         this._panel = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'ai-panel'});
         this._scroll = new St.ScrollView({style_class: 'ai-scroll', x_expand: true});
         this._scroll.set_policy(St.PolicyType.NEVER, St.PolicyType.EXTERNAL);  // scrollable but no visible scrollbar
@@ -357,7 +357,7 @@ class Indicator extends PanelMenu.Button {
 
     refreshSettings() {
         // Re-read the shared store so a change made ANYWHERE (prefs window, this menu, even a
-        // hand edit) is reflected here — the settings.json file monitor calls this on every write.
+        // hand edit) is reflected here: the settings.json file monitor calls this on every write.
         this._settings = readSettings();
         const voice = this._settings.voice ?? SETTINGS_DEFAULTS.voice;
         this._voiceSub.label.text = 'Voice: ' + voice;
@@ -516,7 +516,7 @@ export default class AiLinuxOverlayExtension extends Extension {
             logError(e, 'ai-linux: dir monitor failed');
         }
         try {
-            // Any settings.json write — prefs window, this menu, or by hand — refreshes the menu and
+            // Any settings.json write (prefs window, this menu, or by hand) refreshes the menu and
             // the window-control service immediately, with no relogin.
             this._settingsMon = Gio.File.new_for_path(SETTINGS_PATH).monitor_file(Gio.FileMonitorFlags.NONE, null);
             this._settingsMonId = this._settingsMon.connect('changed', () => {
@@ -624,7 +624,7 @@ export default class AiLinuxOverlayExtension extends Extension {
                 return;
             }
 
-            this._starting = false;   // engine reported in — stop the "starting" blink
+            this._starting = false;   // engine reported in; stop the "starting" blink
             this._mode = data.mode || '';
             this._session = !!data.session;
             const state = this._overlay.update(data);
@@ -664,7 +664,7 @@ export default class AiLinuxOverlayExtension extends Extension {
         // just changed; plain idle/listening (mic open, waiting) does NOT keep it open.
         const active = ACTIVE_STATES.includes(state) || (nowMs - this._lastTranscriptTs < TRANSCRIPT_FRESH_MS);
         if (active) this._activeUntil = nowMs + IDLE_HIDE_MS;   // keep open until 10s after the last activity
-        // Show while pinned, in click-to-talk, during a wake session, or on recent activity — so in wake
+        // Show while pinned, in click-to-talk, during a wake session, or on recent activity, so that in wake
         // mode the overlay appears on the wake word and goes after the session's silence timeout.
         const visible = this._pinned || this._mode === 'click' || this._session || nowMs < this._activeUntil;
         if (visible) this._fadeIn(); else this._fadeOut();

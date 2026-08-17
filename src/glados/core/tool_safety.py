@@ -1,11 +1,11 @@
 """Action safety gate for tool calls.
 
-AI_Linux addition. Some tools — desktop control (``mcp.computer_use.*``) and the
-local shell executor (``mcp.shell.*``) — take irreversible real-world actions
+AI_Linux addition. Some tools (desktop control ``mcp.computer_use.*`` and the
+local shell executor ``mcp.shell.*``) take irreversible real-world actions
 (clicks, keystrokes, running commands). This gate decides whether such a call is
 allowed to run.
 
-Design — why this is NOT an interactive y/N prompt: the assistant runs as a voice
+Why this is NOT an interactive y/N prompt: the assistant runs as a voice
 loop and as a Textual TUI, where a background thread cannot safely read stdin (it
 hangs under the TUI, which owns the terminal, and contends with the text listener
 in input_mode "both"). So the gate is NON-BLOCKING and fail-safe instead of
@@ -16,7 +16,7 @@ prompting:
     in {1, true, yes, on}. A deliberate session-level "let the assistant act"
     consent that behaves identically in voice / TUI / headless.
   * In autonomy mode the gated families are ALWAYS denied (hard floor), regardless
-    of any env override — an autonomous loop must never act unsupervised.
+    of any env override: an autonomous loop must never act unsupervised.
   * A ``prompt_fn`` hook is kept for a future per-action confirmation UI (a Textual
     modal or a spoken yes/no); when supplied it is used instead of the env policy.
 
@@ -67,7 +67,7 @@ def confirm_tool_call(
     prompt_fn: Callable[[str], str] | None = None,
 ) -> bool:
     """Return True if the tool call is authorized to run (non-blocking, fail-safe)."""
-    # Autonomy hard floor: never run desktop/shell actions unsupervised — independent
+    # Autonomy hard floor: never run desktop/shell actions unsupervised, independent
     # of GLADOS_CONFIRM_TOOLS and of arming.
     if autonomy_mode and any(fnmatch.fnmatch(tool_name, p) for p in _AUTONOMY_HARD_DENY):
         logger.warning("tool_safety: auto-denied '{}' (autonomy hard floor)", tool_name)
@@ -90,6 +90,6 @@ def confirm_tool_call(
         logger.warning("tool_safety: allowing gated '{}' (GLADOS_ALLOW_ACTIONS set)", tool_name)
         return True
     logger.warning(
-        "tool_safety: denied gated '{}' — set GLADOS_ALLOW_ACTIONS=1 to enable actions", tool_name
+        "tool_safety: denied gated '{}'; set GLADOS_ALLOW_ACTIONS=1 to enable actions", tool_name
     )
     return False

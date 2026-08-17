@@ -235,7 +235,7 @@ class ShutdownOrchestrator:
         Join all threads in a priority group.
 
         Threads share ONE group deadline. Slicing the budget up front and then shrinking it by each
-        join starved later components — the 2nd thread of a 2-member group could be left 0.1s while
+        join starved later components: the 2nd thread of a 2-member group could be left 0.1s while
         the 1st, which exited instantly, gave nothing back. A shared deadline hands that time on.
 
         Args:

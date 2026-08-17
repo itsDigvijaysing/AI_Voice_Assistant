@@ -2,7 +2,7 @@
 name: open-link-file-or-app
 trigger: user asks to open / launch / go to / start a website, link, URL, file, folder, document, or application
 tools: [mcp.shell.run_command]
-requires: xdg-utils (xdg-open) + GTK (gtk-launch) — present on Ubuntu 26.04 GNOME; actions are gated (armed by default)
+requires: xdg-utils (xdg-open) + GTK (gtk-launch), present on Ubuntu 26.04 GNOME; actions are gated (armed by default)
 ---
 
 Open things by running ONE command with `mcp.shell.run_command`:

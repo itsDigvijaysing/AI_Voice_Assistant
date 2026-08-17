@@ -2,7 +2,7 @@
 name: toggle-night-light
 trigger: user asks to turn on or off night light, blue light filter, warm screen, night mode, or make the screen warmer or cooler
 tools: [mcp.shell.run_command]
-requires: GNOME settings-daemon color plugin (gsettings) — present on Ubuntu 26.04; user-level, no sudo
+requires: GNOME settings-daemon color plugin (gsettings), present on Ubuntu 26.04; user-level, no sudo
 ---
 
 Control GNOME Night Light by running ONE command via mcp.shell.run_command (no sudo):

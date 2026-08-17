@@ -1,4 +1,4 @@
-"""AI Linux overlay bridge — a decoupled state/control channel between the engine and a
+"""AI Linux overlay bridge, a decoupled state/control channel between the engine and a
 GNOME Shell extension (or any UI).
 
 The engine writes its live state + transcript to ``state.json``; the UI writes
@@ -7,18 +7,18 @@ listening-mode / mic commands to ``control.json``. Both live in
 
 Enabled with env ``GLADOS_OVERLAY=1`` (the ``ai-linux`` launcher sets it). Modes:
 
-* ``always`` — continuous listening (holds the mic).
-* ``wake``   — listen for a wake word; acts only on it (still holds the mic).
-* ``click``  — mic released; an ``activate`` command listens for one turn, then releases.
+* ``always``: continuous listening (holds the mic).
+* ``wake``: listen for a wake word; acts only on it (still holds the mic).
+* ``click``: mic released; an ``activate`` command listens for one turn, then releases.
 
 A ``mute`` action releases the mic; ``unmute`` reacquires. Releasing the mic
-(``audio_io.stop_listening()``) frees the sound card for other applications — the whole
+(``audio_io.stop_listening()``) frees the sound card for other applications, the whole
 point of the click / mute controls.
 
 state.json   : {"state": idle|listening|thinking|speaking|muted|off, "mode": always|wake|click,
                 "you": "<last user text>", "assistant": "<last reply>", "you_ts": <ms>, "reply_ts": <ms>,
                 "session": <bool>, "ts": <ms>}  (you_ts/reply_ts let the UI show a REPEATED identical
-                utterance/reply as a new bubble — text equality alone can't)
+                utterance/reply as a new bubble, text equality alone can't)
 control.json : {"mode": always|wake|click, "action": activate|mute|unmute|toggle_mute, "wake_word": "<word>"}
 """
 
@@ -105,7 +105,7 @@ class OverlayBridge:
 
     def start(self) -> None:
         # Seed the watermark from any control.json left by a previous run, so only commands written
-        # after startup apply — otherwise the first tick replays a stale one over the startup mode.
+        # after startup apply, otherwise the first tick replays a stale one over the startup mode.
         try:
             self._last_control_mtime_ns = self.control_path.stat().st_mtime_ns
             self._last_control_raw = self.control_path.read_text()  # seed content too, or the first
@@ -386,7 +386,7 @@ class OverlayBridge:
             self._stop.wait(self.POLL)
 
     def _wake_session(self) -> bool:
-        """True while a wake-word conversation window is open (wake mode only) — drives overlay show/hide."""
+        """True while a wake-word conversation window is open (wake mode only), drives overlay show/hide."""
         if self.mode != "wake":
             return False
         fn = getattr(getattr(self.engine, "speech_listener", None), "in_wake_session", None)

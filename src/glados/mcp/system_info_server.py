@@ -128,7 +128,7 @@ def system_overview() -> str:
     return json.dumps(payload)
 
 
-# Read-only status tools (no state change) — kept on this NON-gated server so they answer questions
+# Read-only status tools (no state change), kept on this NON-gated server so they answer questions
 # even in chat/info mode. They shell out through the shared denylist-checked executor.
 @mcp.tool()
 def battery_status() -> str:

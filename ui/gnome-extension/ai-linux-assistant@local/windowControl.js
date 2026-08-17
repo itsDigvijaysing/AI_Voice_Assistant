@@ -1,12 +1,12 @@
-// Window-control D-Bus service — VENDORED (MIT) from computer-use-linux.
+// Window-control D-Bus service. VENDORED (MIT) from computer-use-linux.
 //
 //   Source:  https://github.com/avifenesh/computer-use-linux
 //            gnome-shell-extension/computer-use-linux@avifenesh.dev/extension.js
-//   License: MIT — Copyright (c) 2026 Avi Fenesh  (see LICENSE.computer-use-linux)
+//   License: MIT. Copyright (c) 2026 Avi Fenesh  (see LICENSE.computer-use-linux)
 //
 // Why it lives here: on Wayland, only code running inside gnome-shell can enumerate or focus
 // windows. The computer-use-linux Rust binary (the GUI-automation backend) calls this session
-// D-Bus service BY NAME — `dev.avifenesh.ComputerUseLinux.WindowControl` — so folding it into our
+// D-Bus service BY NAME (`dev.avifenesh.ComputerUseLinux.WindowControl`), so folding it into our
 // extension (keeping the exact name/path) removes the separate third-party extension while the
 // binary keeps working unchanged. It is DORMANT by default: the AI Linux extension only calls
 // enable() when the `window_control` setting is on, so nothing registers on the bus otherwise.
@@ -166,7 +166,7 @@ function clientTypeName(value) {
 // user has turned window control on; disable() releases it. Idempotent.
 export class WindowControl {
     enable() {
-        // Never let a D-Bus export/own failure propagate into the extension's enable() — that would
+        // Never let a D-Bus export/own failure propagate into the extension's enable(): that would
         // leave GNOME with a half-enabled extension it won't disable(), leaking the overlay chrome.
         if (this._dbus) return;
         try {

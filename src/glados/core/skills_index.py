@@ -1,7 +1,7 @@
 """Shared, in-process skills index (AI_Linux).
 
 Single source of truth for reading skills/SKILL-*.md and ranking them for a query. Since the
-native-tools pivot (305a97c) the default runtime does NOT retrieve or inject skills per turn —
+native-tools pivot (305a97c) the default runtime does NOT retrieve or inject skills per turn,
 desktop actions are typed mcp.skills_actions.* tools. This index now serves: the OPTIONAL
 mcp.skills server (find_skill/list_skills, disabled by default), /learn's write_skill, and
 /tidy's catalog. Keyword retrieval by default; the hybrid embedding path plugs in behind
@@ -99,7 +99,7 @@ def _keyword_ranked(query: str, skills: list[dict]) -> list[tuple[dict, float]]:
     ranked: list[tuple[dict, float]] = []
     for skill in skills:
         # Whole-word match against name + trigger + commands only (NOT the raw frontmatter, and NOT
-        # substrings — else "is" matches "raise" and "me" matches "volume").
+        # substrings, else "is" matches "raise" and "me" matches "volume").
         hay_words = set(re.findall(r"\w+", f"{skill['name']} {skill['trigger']} {' '.join(skill.get('commands', []))}".lower()))
         ranked.append((skill, float(sum(1 for w in qwords if w in hay_words))))
     # tie-break toward skills that carry a runnable command (so an actionable skill beats a command-less

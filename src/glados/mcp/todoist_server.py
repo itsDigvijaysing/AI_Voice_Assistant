@@ -2,9 +2,9 @@
 
 Lets the assistant check the user's Todoist tasks and add new ones
 (https://developer.todoist.com/api/v1/). The personal API token is read from
-TODOIST_API_TOKEN in the environment — never stored in config, never committed (same
+TODOIST_API_TOKEN in the environment, never stored in config, never committed (same
 convention as every other API key this project reads, e.g. GLADOS_API_KEY). Ungated: these calls only touch the user's own Todoist
-account, an external and trivially reversible service — never the local machine — so
+account, an external and trivially reversible service, never the local machine, so
 they carry none of the local-shell/GUI risk the action gate exists for.
 """
 
@@ -48,20 +48,20 @@ def list_tasks(filter: str = "today") -> str:
     """List the user's Todoist tasks.
 
     Args:
-        filter: a Todoist filter query — "today" (default), "overdue", "today | overdue",
+        filter: a Todoist filter query, "today" (default), "overdue", "today | overdue",
             or "" / "all" for every open task across all projects.
 
     Returns JSON {count, tasks: [{id, content, due, priority}, ...]} or {error}.
     """
     token = _token()
     if not token:
-        return json.dumps({"error": "TODOIST_API_TOKEN is not set — export it before starting the assistant"})
+        return json.dumps({"error": "TODOIST_API_TOKEN is not set, export it before starting the assistant"})
     headers = {"Authorization": f"Bearer {token}"}
     f = (filter or "").strip()
     try:
         if f and f.lower() != "all":
             # Verified against the live API: this endpoint needs "query", not the "filter" the docs
-            # show — a "filter" param 400s with ARGUMENT_MISSING.
+            # show, a "filter" param 400s with ARGUMENT_MISSING.
             resp = requests.get(f"{_API_BASE}/tasks/filter", headers=headers, params={"query": f}, timeout=_TIMEOUT)
         else:
             resp = requests.get(f"{_API_BASE}/tasks", headers=headers, timeout=_TIMEOUT)
@@ -90,7 +90,7 @@ def create_task(content: str, due_string: str = "today") -> str:
     """
     token = _token()
     if not token:
-        return json.dumps({"error": "TODOIST_API_TOKEN is not set — export it before starting the assistant"})
+        return json.dumps({"error": "TODOIST_API_TOKEN is not set, export it before starting the assistant"})
     text = (content or "").strip()
     if not text:
         return json.dumps({"error": "create_task needs task content"})

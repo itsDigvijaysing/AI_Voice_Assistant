@@ -1,4 +1,4 @@
-"""Built-in tool: put the ASSISTANT to sleep (dormant) — never the OS.
+"""Built-in tool: put the ASSISTANT to sleep (dormant), never the OS.
 
 The engine is already dormant between wake sessions (the mic stays on but it ignores everything except the
 wake word). So "go to sleep" just ends the current wake conversation window: the assistant stops responding
@@ -19,7 +19,7 @@ tool_definition = {
         "description": (
             "Put the ASSISTANT to sleep: stop responding until the user says the wake word 'computer' again. "
             "Use this for 'goodbye', 'go to sleep', 'that's all', or 'stop listening'. It affects ONLY the "
-            "assistant — it never suspends, sleeps, locks, logs out, or turns off the computer."
+            "assistant, it never suspends, sleeps, locks, logs out, or turns off the computer."
         ),
         "parameters": {"type": "object", "properties": {}},
     },
@@ -52,7 +52,7 @@ class GoToSleep:
             try:
                 self._audio_io.stop_listening()
                 # No wake word to re-arm, so tell the user the one recovery path (the overlay orb).
-                result = "I've stopped listening — click the assistant orb when you want me again."
+                result = "I've stopped listening, click the assistant orb when you want me again."
             except Exception as exc:  # noqa: BLE001
                 logger.warning("go_to_sleep: could not stop listening: {}", exc)
         self.llm_queue.put(

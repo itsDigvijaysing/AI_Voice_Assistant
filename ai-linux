@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# AI Linux Assistant — the single command for everything.
+# AI Linux Assistant: the single command for everything.
 #
 #   ./ai-linux                 voice + text, local qwen3:4b brain     [default]
 #   ./ai-linux tui             text-only Textual UI
-#   ./ai-linux setup           (re)run full setup — idempotent; installs desktop tools too (one-time sudo for apt,
+#   ./ai-linux setup           (re)run full setup, idempotent; installs desktop tools too (one-time sudo for apt,
 #                              skipped if already present). The running assistant itself never uses sudo.
 #   ./ai-linux doctor          check that everything is ready
 #   ./ai-linux uninstall       revert everything setup changed (reads the install manifest). Aliases: revert.
@@ -19,7 +19,7 @@
 #   --allow-actions   force-arm gated actions (default for interactive start/tui anyway)
 #   --barge-in        DEFAULT ON: talk over the assistant while it speaks. Routes audio through
 #                     PipeWire's WebRTC echo-cancel (auto-loaded, reversible) so it works on open
-#                     speakers — no headphones. Needs PipeWire (Ubuntu 26.04 default).
+#                     speakers, no headphones. Needs PipeWire (Ubuntu 26.04 default).
 #   --half-duplex     turn barge-in OFF (mic ignored while speaking; no echo-cancel). Fallback if AEC misbehaves.
 #   --overlay-mode=M  initial overlay listening mode: always | wake (default) | click  (mute = off)
 #   --no-overlay      don't drive the on-screen overlay this run
@@ -33,7 +33,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE" || { echo "ERROR: cannot cd to $HERE"; exit 1; }
 
 # Load .env (KEY=value per line, '#' comments/blank lines ignored) into the environment for this
-# run, if present — the simplest place to keep secrets like TODOIST_API_TOKEN instead of your shell
+# run if present; the simplest place to keep secrets like TODOIST_API_TOKEN instead of your shell
 # profile. Copy .env.example -> .env and fill in real values; .env is gitignored, never committed.
 load_dotenv(){
   local f="$HERE/.env" key val
@@ -61,7 +61,7 @@ OVERLAY=1          # drive the on-screen GNOME overlay (engine writes state.json
 OMODE="wake"       # initial listening mode: always | wake (wake word) | click  (overlay 3-way; mute = off)
 OMODE_FROM_CLI=0   # set when --overlay-mode is passed; then settings.json must not override it
 ACTIONS="auto"     # auto = arm shell/desktop actions for interactive start|tui; on|off force it
-                   #        (autonomy is ALWAYS blocked regardless — see core/tool_safety.py)
+                   #        (autonomy is ALWAYS blocked regardless, see core/tool_safety.py)
 BARGE=1            # default ON: route audio through PipeWire WebRTC echo-cancel for talk-over barge-in (--half-duplex to disable)
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-linux"
@@ -85,7 +85,7 @@ c_warn(){ printf '   %s! %s%s\n' "$C_WARN" "$*" "$C_OFF"; }
 c_err(){  printf '   %s✗ %s%s\n' "$C_ERR" "$*" "$C_ERR_OFF" >&2; }
 
 # ---- install manifest (the inversion file): record only what we actually change, deduped ----
-manifest_add(){  # manifest_add <kind> <value> — append once so re-running setup never double-records
+manifest_add(){  # manifest_add <kind> <value>: append once so re-running setup never double-records
   mkdir -p "$STATE_DIR" 2>/dev/null; chmod 700 "$STATE_DIR" 2>/dev/null || true
   local line; line="$(printf '%s\t%s' "$1" "$2")"
   [ -f "$MANIFEST" ] && grep -qxF "$line" "$MANIFEST" 2>/dev/null && return 0
@@ -98,8 +98,8 @@ banner(){
   printf '%s' "$C_BAN"
   cat <<'BANNER'
    ╔──────────────────────────────────────────╗
-   │   AI Linux Assistant — local · private    │
-   │   voice + desktop control · qwen3:4b      │
+   │   AI Linux Assistant · local · private   │
+   │   voice + desktop control · qwen3:4b     │
    ╚──────────────────────────────────────────╝
 BANNER
   printf '%s' "$C_OFF"
@@ -126,7 +126,7 @@ start_ollama(){
   ollama_up && return 0
   local ob; ob="$(ollama_bin)"; [ -z "$ob" ] && return 1
   # 9>&- closes the run.lock fd (opened earlier for the single-instance flock) in this backgrounded
-  # child before it forks. Without it, ollama serve — and llama-server under it — inherit an open
+  # child before it forks. Without it, ollama serve (and llama-server under it) inherit an open
   # duplicate of that fd and, being long-lived daemons that outlive this script by design (they stay
   # up across restarts to keep the model warm), hold the flock forever: every later `stop` then
   # `start` sees "already running" no matter how fast the engine itself shuts down, because the lock
@@ -148,7 +148,7 @@ apply_settings(){
   [ -f "$f" ] || return 0
   local m t w v a b _vals
   # ONE python3 pass (was six separate interpreters) prints the six values, one per line, '' for an
-  # absent key — same semantics as before: model/wake_word/voice verbatim; think/actions/barge_in
+  # absent key, same semantics as before: model/wake_word/voice verbatim; think/actions/barge_in
   # lowercased and distinguishing an ABSENT key ('') from an explicit false (so a default is never
   # persisted/forced). Heredoc body + terminator must stay column-0.
   _vals="$(python3 - "$f" 2>/dev/null <<'PY'
@@ -176,7 +176,7 @@ EOF
   case "$t" in true) export GLADOS_LLM_THINK=1 ;; false) export GLADOS_LLM_THINK=0 ;; esac
   # Voice pick from Settings: bare SuperTonic id (M1/F3) -> supertonic:<id>; anything else passes through.
   case "$v" in [MF][0-9]) export GLADOS_VOICE="supertonic:$v" ;; "") : ;; *) export GLADOS_VOICE="$v" ;; esac
-  # Actions/barge-in from Settings — explicit CLI flags always win (they set ACTIONS/BARGE_FROM_CLI).
+  # Actions/barge-in from Settings; explicit CLI flags always win (they set ACTIONS/BARGE_FROM_CLI).
   if [ "$ACTIONS" = "auto" ]; then
     case "$a" in false) unset GLADOS_ALLOW_ACTIONS ;; true) export GLADOS_ALLOW_ACTIONS=1 ;; esac
   fi
@@ -193,7 +193,7 @@ EOF
 
 # ---- setup steps (each idempotent) ----
 ensure_env(){
-  [ -z "${CONDA:-}" ] && { c_err "conda not found — install Miniconda: https://docs.conda.io/projects/miniconda"; exit 1; }
+  [ -z "${CONDA:-}" ] && { c_err "conda not found. Install Miniconda: https://docs.conda.io/projects/miniconda"; exit 1; }
   if env_exists; then c_ok "conda env '$ENV_NAME'"; else
     "$CONDA" create -y -n "$ENV_NAME" python=3.12 >/dev/null && { manifest_add conda_env "$ENV_NAME"; c_ok "created env '$ENV_NAME' (python 3.12)"; }
   fi
@@ -202,7 +202,7 @@ ensure_env(){
 ensure_deps(){
   if "$CONDA" run -n "$ENV_NAME" python -c "import glados" >/dev/null 2>&1; then c_ok "engine + deps present"; else
     if "$CONDA" run -n "$ENV_NAME" pip install -q -e ".[cpu]"; then c_ok "engine + deps installed"
-    else c_err "pip install of the engine failed — aborting setup."; exit 1; fi
+    else c_err "pip install of the engine failed, aborting setup."; exit 1; fi
   fi
 }
 ensure_ollama(){
@@ -216,7 +216,7 @@ ensure_ollama(){
     && rm -f /tmp/ollama.tar.zst && { manifest_add ollama_installed 1; c_ok "ollama installed"; }
 }
 ensure_model(){
-  start_ollama || { c_warn "ollama not serving — skipping model pull"; return 0; }
+  start_ollama || { c_warn "ollama not serving, skipping model pull"; return 0; }
   local ob; ob="$(ollama_bin)"
   if "$ob" list 2>/dev/null | grep -q "^${MODEL}"; then c_ok "model $MODEL present"; else
     "$ob" pull "$MODEL" && { manifest_add ollama_model "$MODEL"; c_ok "model $MODEL pulled"; }; fi
@@ -243,10 +243,10 @@ ensure_binary(){  # optional desktop-control server
     ( cd "$HERE/refs/computer-use-linux" && cargo build --release -q ) \
       && cp "$HERE/refs/computer-use-linux/target/release/computer-use-linux" "$HOME/.local/bin/" \
       && { manifest_add file "$HOME/.local/bin/computer-use-linux"; c_ok "built + installed"; }
-  else c_warn "desktop control skipped (optional) — 'npm i -g @agent-sh/computer-use-linux' to add it"; fi
+  else c_warn "desktop control skipped (optional); run 'npm i -g @agent-sh/computer-use-linux' to add it"; fi
   # Enable AT-SPI (gsettings, NO sudo) so the assistant can read UI elements (re-login to apply). Window
   # TARGETING no longer uses a separate extension: the window-control D-Bus service is merged into our overlay
-  # extension (ui/gnome-extension, gated behind the Settings "Window control" toggle — dormant by default), so
+  # extension (ui/gnome-extension, gated behind the Settings "Window control" toggle, dormant by default), so
   # we do NOT run `setup-window-targeting` and we remove any previously-installed separate copy (below).
   if [ -x "$HOME/.local/bin/computer-use-linux" ]; then
     # `computer-use-linux setup` flips org.gnome.desktop.interface toolkit-accessibility=true. Capture the prior
@@ -259,14 +259,14 @@ ensure_binary(){  # optional desktop-control server
       [ "$a11y_after" != "$a11y_before" ] && manifest_add gsetting "$(printf 'org.gnome.desktop.interface\ttoolkit-accessibility\t%s' "$a11y_before")"
     fi
   fi
-  # Migration: drop the old standalone window-control extension if a prior setup installed it — its D-Bus
+  # Migration: drop the old standalone window-control extension if a prior setup installed it; its D-Bus
   # service now lives in our overlay extension, and two owners of the same bus name would conflict.
   if [ -d "$HOME/.local/share/gnome-shell/extensions/$CU_EXT_UUID" ]; then
     gext_remove "$CU_EXT_UUID"
     c_ok "removed the standalone window-control extension (merged into the AI Linux overlay)"
   fi
 }
-ensure_screenshot(){  # install the portal-based screenshot helper to ~/.local/bin — UNCONDITIONAL (works without computer-use).
+ensure_screenshot(){  # install the portal-based screenshot helper to ~/.local/bin. UNCONDITIONAL (works without computer-use).
   # Saves a PNG via computer-use's sanctioned capture portal (no gnome-screenshot, no app-grid icon).
   if [ -f "$HERE/bin/ai-linux-screenshot" ]; then
     if install -Dm755 "$HERE/bin/ai-linux-screenshot" "$HOME/.local/bin/ai-linux-screenshot" 2>/dev/null; then
@@ -275,14 +275,14 @@ ensure_screenshot(){  # install the portal-based screenshot helper to ~/.local/b
   fi
 }
 ensure_desktop_tools(){  # one-time apt for brightness/media/clipboard/input; skipped (no sudo) if already present.
-  # NOTE: gnome-screenshot is deliberately NOT installed — it adds a stray "Screenshot" app-grid icon and is
+  # NOTE: gnome-screenshot is deliberately NOT installed: it adds a stray "Screenshot" app-grid icon and is
   # broken on GNOME Wayland anyway; screenshots go through computer-use-linux's sanctioned screen-capture portal.
   local pkgs=(brightnessctl playerctl wl-clipboard ydotool)   # package names
   local bins=(brightnessctl playerctl wl-copy        ydotool)  # the binary each provides
   local need=() i
   for i in "${!pkgs[@]}"; do command -v "${bins[$i]}" >/dev/null 2>&1 || need+=("${pkgs[$i]}"); done
   if [ "${#need[@]}" -eq 0 ]; then c_ok "desktop tools present (brightness, media, clipboard, input)"
-  elif ! command -v apt-get >/dev/null 2>&1; then c_warn "apt not found — install yourself: ${need[*]}"
+  elif ! command -v apt-get >/dev/null 2>&1; then c_warn "apt not found, install yourself: ${need[*]}"
   else
     c_warn "installing desktop tools (one-time sudo; the running assistant itself never uses sudo): ${need[*]}"
     if sudo apt-get install -y "${need[@]}" >/dev/null 2>&1; then
@@ -290,9 +290,9 @@ ensure_desktop_tools(){  # one-time apt for brightness/media/clipboard/input; sk
       c_ok "desktop tools installed (${need[*]})"
     else c_warn "some desktop tools failed to install (skills will say so when used)"; fi
   fi
-  # video group (brightnessctl needs it) — record only if we actually add the user (so uninstall only reverts our change).
+  # video group (brightnessctl needs it); record only if we actually add the user (so uninstall only reverts our change).
   if ! id -nG "$USER" 2>/dev/null | grep -qw video; then
-    sudo usermod -aG video "$USER" >/dev/null 2>&1 && { manifest_add group video; c_warn "added $USER to the video group (brightnessctl) — log out/in to apply"; }
+    sudo usermod -aG video "$USER" >/dev/null 2>&1 && { manifest_add group video; c_warn "added $USER to the video group (brightnessctl), log out/in to apply"; }
   fi
   # Scoped uinput access for ydotool via a session ACL (NO `input` group, so no system-wide keylog surface).
   if [ -f "$HERE/configs/udev/99-ai-linux-uinput.rules" ] && [ ! -f /etc/udev/rules.d/99-ai-linux-uinput.rules ]; then
@@ -306,17 +306,17 @@ ensure_desktop_tools(){  # one-time apt for brightness/media/clipboard/input; sk
   else
     systemctl --user start ydotoold >/dev/null 2>&1 || true
   fi
-  id -nG 2>/dev/null | grep -qw input && c_warn "you're already in the 'input' group (keylog surface) — remove with: sudo gpasswd -d $USER input"
+  id -nG 2>/dev/null | grep -qw input && c_warn "you're already in the 'input' group (keylog surface); remove with: sudo gpasswd -d $USER input"
 }
 ensure_desktop(){
   chmod +x "$HERE/ai-linux"
   local apps="$HOME/.local/share/applications"; mkdir -p "$apps"
-  # Install the icon as a NAMED icon in the hicolor theme — GNOME picks this up far more
+  # Install the icon as a NAMED icon in the hicolor theme; GNOME picks this up far more
   # reliably than an absolute Icon= path, and gtk-update-icon-cache refreshes the lookup.
   local icondir="$HOME/.local/share/icons/hicolor/scalable/apps"; mkdir -p "$icondir"
   cp -f "$ICON" "$icondir/ai-linux-assistant.svg" 2>/dev/null || true
   # Terminal=false: clicking the app grid icon launches the engine in the background and the
-  # on-screen overlay orb is the UI — no terminal window pops up. AI_LINUX_DESKTOP=1 tells the
+  # on-screen overlay orb is the UI; no terminal window pops up. AI_LINUX_DESKTOP=1 tells the
   # launcher this is a windowless desktop launch, so it logs to a file and surfaces fatal errors
   # as a desktop notification (a plain shell run keeps its own stdout/pipes untouched).
   cat > "$apps/ai-linux-assistant.desktop" <<EOF
@@ -345,7 +345,7 @@ ensure_overlay(){  # install + enable the on-screen overlay GNOME Shell extensio
   mkdir -p "$(dirname "$dst")"; rm -rf "$dst"; cp -r "$src" "$dst"
   manifest_add gext "$EXT_UUID"
   # Enable it. On Wayland a freshly-copied extension isn't registered with the running Shell
-  # yet, so `gnome-extensions enable` fails until re-login — fall back to adding the UUID to
+  # yet, so `gnome-extensions enable` fails until re-login; fall back to adding the UUID to
   # the enabled-extensions gsettings key directly, which the Shell honors at the next login.
   if command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions enable "$EXT_UUID" >/dev/null 2>&1; then
     manifest_add gext_enabled "$EXT_UUID"
@@ -400,7 +400,7 @@ cmd_setup(){
 # exists (e.g. installed before this feature), it falls back to the deterministic default artifacts.
 gext_remove(){  # disable + drop from enabled-extensions + delete the installed copy of one extension
   local uuid="$1"
-  [ -n "$uuid" ] || { c_warn "gext_remove: empty uuid — refusing"; return 1; }  # never rm -rf the whole extensions dir
+  [ -n "$uuid" ] || { c_warn "gext_remove: empty uuid, refusing"; return 1; }  # never rm -rf the whole extensions dir
   command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions disable "$uuid" >/dev/null 2>&1 || true
   if command -v gsettings >/dev/null 2>&1; then
     local cur; cur="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null)"
@@ -415,10 +415,10 @@ purge_weights(){ rm -f "$HERE"/models/*/*.onnx "$HERE"/models/*/*.bin 2>/dev/nul
 
 cmd_uninstall(){
   banner; resolve_conda
-  local tag=""; [ "$DRYRUN" = 1 ] && tag="  (dry-run — nothing will change)"
+  local tag=""; [ "$DRYRUN" = 1 ] && tag="  (dry-run, nothing will change)"
   c_say "Uninstall / revert AI Linux Assistant$tag"
   local hm=0; [ -f "$MANIFEST" ] && hm=1
-  [ "$hm" = 1 ] && c_ok "install manifest: $MANIFEST" || c_warn "no install manifest — reverting the known default artifacts"
+  [ "$hm" = 1 ] && c_ok "install manifest: $MANIFEST" || c_warn "no install manifest, reverting the known default artifacts"
 
   # --- compute the plan (manifest first; deterministic fallbacks otherwise) ---
   # Our own overlay + the launcher/icon are ALWAYS created by setup, so always revert them. The computer-use
@@ -427,10 +427,10 @@ cmd_uninstall(){
   local dsk="$HOME/.local/share/applications/ai-linux-assistant.desktop"
   local ico="$HOME/.local/share/icons/hicolor/scalable/apps/ai-linux-assistant.svg"
   # Idempotent: if there's no manifest AND none of our always-created artifacts remain (e.g. a second
-  # uninstall — the first deletes the manifest), there is nothing of ours left. Do NOT fall into the
+  # uninstall, the first deletes the manifest), there is nothing of ours left. Do NOT fall into the
   # dpkg-guessing fallback, which could touch unrelated packages.
   if [ "$hm" = 0 ] && [ ! -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ] && [ ! -e "$dsk" ]; then
-    c_ok "nothing to uninstall — AI Linux Assistant artifacts already removed."; return 0
+    c_ok "nothing to uninstall, AI Linux Assistant artifacts already removed."; return 0
   fi
   if [ "$hm" = 1 ]; then
     exts="$( { printf '%s\n' "$EXT_UUID"; manifest_values gext; } | awk 'NF&&!s[$0]++')"
@@ -443,7 +443,7 @@ cmd_uninstall(){
   if [ "$hm" = 1 ]; then pkgs="$(manifest_values apt_pkg)"
   else
     # No manifest = no proof we installed any package. "Revert only our deltas" means we must NOT guess
-    # from mere presence — gnome-screenshot is a stock component we never install, and the others may
+    # from mere presence, gnome-screenshot is a stock component we never install, and the others may
     # predate us. Collect candidates only to TELL the user; never auto-remove them.
     pkgs=""
     for p in brightnessctl playerctl wl-clipboard ydotool; do dpkg -s "$p" >/dev/null 2>&1 && nomanifest_pkgs="$nomanifest_pkgs $p"; done
@@ -460,28 +460,28 @@ cmd_uninstall(){
   while IFS= read -r f; do [ -n "$f" ] && [ -e "$f" ] && echo "   • file             $f"; done <<< "$files"
   [ "$drop_ydo" = 1 ] && echo "   • user service     ydotoold (disable)"
   manifest_values gsetting | while IFS=$'\t' read -r s k p; do [ -n "$k" ] && echo "   • gsetting         $s $k → restore $p"; done
-  echo   "   • state/runtime    $STATE_DIR , app+icon caches refreshed"
+  echo   "   • state/runtime    $STATE_DIR (app+icon caches refreshed)"
   if [ -n "$(echo "$pkgs$udevs" | tr -d '[:space:]')" ] || [ "$drop_video" = 1 ]; then
     c_say "Remove (needs sudo):"
     [ -n "$(echo "$pkgs" | tr -d '[:space:]')" ] && echo "   • apt packages     $(echo $pkgs)"
     for r in $udevs; do echo "   • udev rule        $r   (+ udev reload)"; done
     [ "$drop_video" = 1 ] && echo "   • group            remove $USER from 'video'"
   fi
-  [ -n "$(echo "$nomanifest_pkgs" | tr -d '[:space:]')" ] && c_warn "no manifest — leaving apt packages installed (can't prove they're ours):$nomanifest_pkgs"
+  [ -n "$(echo "$nomanifest_pkgs" | tr -d '[:space:]')" ] && c_warn "no manifest, leaving apt packages installed (can't prove they're ours):$nomanifest_pkgs"
   if [ "$PURGE" = 1 ]; then
-    c_say "PURGE (heavy — full rebuild needed next time):"
+    c_say "PURGE (heavy, full rebuild needed next time):"
     { [ "$hm" = 0 ] || manifest_has conda_env "$ENV_NAME"; } && env_exists && echo "   • conda env        $ENV_NAME"
     if [ -n "$(echo "$models" | tr -d '[:space:]')" ]; then echo "   • ollama models    $(echo $models)"
-    elif [ "$hm" = 0 ]; then echo "   • ollama models    kept (no record — won't remove models you may have pulled yourself)"; fi
+    elif [ "$hm" = 0 ]; then echo "   • ollama models    kept (no record, won't remove models you may have pulled yourself)"; fi
     { [ "$hm" = 0 ] || manifest_has weights 1; } && echo "   • speech weights   $HERE/models/*/*.onnx"
     manifest_has ollama_installed 1 && echo "   • ollama binary    ~/.local/bin/ollama (+ ~/.local/lib/ollama)"
-    echo   "   • config/data      ~/.config/ai-linux , $HERE/data/skills_*"
+    echo   "   • config/data      ~/.config/ai-linux and $HERE/data/skills_*"
   fi
   echo
-  if [ "$DRYRUN" = 1 ]; then c_warn "dry-run complete — nothing was changed. Re-run without --dry-run to apply."; return 0; fi
+  if [ "$DRYRUN" = 1 ]; then c_warn "dry-run complete, nothing was changed. Re-run without --dry-run to apply."; return 0; fi
   if [ "$ASSUME_YES" != 1 ]; then
     printf '   Proceed with uninstall? [y/N] '; local ans; read -r ans </dev/tty 2>/dev/null || read -r ans
-    case "$ans" in y|Y|yes|YES) ;; *) c_warn "aborted — nothing changed."; return 0 ;; esac
+    case "$ans" in y|Y|yes|YES) ;; *) c_warn "aborted, nothing changed."; return 0 ;; esac
   fi
 
   # --- execute ---
@@ -523,29 +523,29 @@ cmd_doctor(){
   rv="$(ext_version "$HERE/ui/gnome-extension/$EXT_UUID")"
   iv="$(ext_version "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID")"
   if [ -n "$iv" ] && [ "$iv" != "$rv" ]; then
-    c_warn "installed extension v${iv:-?} != repo v${rv:-?} — re-copy it, then log out/in (Wayland loads extension code at login)"
+    c_warn "installed extension v${iv:-?} != repo v${rv:-?}; re-copy it, then log out/in (Wayland loads extension code at login)"
   elif [ -n "$iv" ]; then
-    c_ok "extension v$iv (installed matches repo; the RUNNING copy is whatever was loaded at login — check the menu header)"
+    c_ok "extension v$iv (installed matches repo; the RUNNING copy is whatever was loaded at login, check the menu header)"
   fi
-  env_exists && c_ok "conda env '$ENV_NAME'" || c_warn "conda env missing — run ./ai-linux setup"
-  if env_exists && "$CONDA" run -n "$ENV_NAME" python -c "import glados" >/dev/null 2>&1; then c_ok "engine importable"; else c_warn "engine not installed — run ./ai-linux setup"; fi
+  env_exists && c_ok "conda env '$ENV_NAME'" || c_warn "conda env missing, run ./ai-linux setup"
+  if env_exists && "$CONDA" run -n "$ENV_NAME" python -c "import glados" >/dev/null 2>&1; then c_ok "engine importable"; else c_warn "engine not installed, run ./ai-linux setup"; fi
   local ob; ob="$(ollama_bin)"; [ -n "$ob" ] && c_ok "ollama: $ob" || c_warn "ollama not installed"
   ollama_up && c_ok "ollama serving" || c_warn "ollama not running (auto-starts on launch)"
   [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^${MODEL}" && c_ok "model $MODEL" || c_warn "model $MODEL not pulled"; }
   [ -n "$ob" ] && { "$ob" list 2>/dev/null | grep -q "^nomic-embed-text" && c_ok "embeddings model (optional skills-retrieval server)" || c_ok "embeddings model not pulled (only the optional skills-retrieval server uses it)"; }
-  local n; n=$(find "$HERE"/models -name '*.onnx' 2>/dev/null | wc -l); [ "$n" -gt 0 ] && c_ok "speech weights ($n .onnx files)" || c_warn "speech weights missing — ./ai-linux download"
+  local n; n=$(find "$HERE"/models -name '*.onnx' 2>/dev/null | wc -l); [ "$n" -gt 0 ] && c_ok "speech weights ($n .onnx files)" || c_warn "speech weights missing; run ./ai-linux download"
   [ -x "$HOME/.local/bin/computer-use-linux" ] && c_ok "desktop control binary" || c_warn "desktop control not installed (optional)"
   local miss=""; for t in brightnessctl playerctl wl-copy ydotool; do command -v "$t" >/dev/null 2>&1 || miss="$miss $t"; done
-  [ -z "$miss" ] && c_ok "desktop tools (brightness/media/clipboard/input)" || c_warn "desktop tools missing:$miss — run './ai-linux setup'"
+  [ -z "$miss" ] && c_ok "desktop tools (brightness/media/clipboard/input)" || c_warn "desktop tools missing:$miss, run './ai-linux setup'"
   if [ -d "$HOME/.local/share/gnome-shell/extensions/$EXT_UUID" ]; then
     if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -q "$EXT_UUID"; then
       if command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions list --enabled 2>/dev/null | grep -q "$EXT_UUID"; then
         c_ok "overlay extension installed + enabled + loaded"
       else c_ok "overlay extension installed + enabled (loads at next login)"; fi
-    else c_warn "overlay extension installed, not enabled — run ./ai-linux setup"; fi
-  else c_warn "overlay extension not installed — run ./ai-linux setup"; fi
+    else c_warn "overlay extension installed, not enabled, run ./ai-linux setup"; fi
+  else c_warn "overlay extension not installed, run ./ai-linux setup"; fi
   if [ -d "$HOME/.local/share/gnome-shell/extensions/$CU_EXT_UUID" ]; then
-    c_warn "old standalone window-control extension still present — run ./ai-linux setup to remove it (merged into the overlay)"
+    c_warn "old standalone window-control extension still present, run ./ai-linux setup to remove it (merged into the overlay)"
   else c_ok "window control merged into the overlay extension (dormant unless enabled in Settings)"; fi
   echo
 }
@@ -555,9 +555,9 @@ ensure_ready_for_run(){
   resolve_conda
   export PATH="$HOME/.local/bin:$PATH"   # so the shell/skills tools resolve ~/.local/bin binaries (ai-linux-screenshot, etc.) in the conda-run subprocess
   apply_settings
-  if ! env_exists; then c_warn "first run — setting up (one time)…"; cmd_setup; fi
+  if ! env_exists; then c_warn "first run, setting up (one time)…"; cmd_setup; fi
   if [ "$SUB" != "say" ] && [[ "$CONFIG" == *ai_linux_config.yaml ]]; then  # local brain needs Ollama (not `say`, which is TTS-only)
-    start_ollama || c_warn "ollama not serving — the local brain may not respond. Try: ./ai-linux setup"
+    start_ollama || c_warn "ollama not serving, the local brain may not respond. Try: ./ai-linux setup"
     ensure_model    # pull the selected model if missing (e.g. switched to qwen3:1.7b)
     prewarm_ollama
   fi
@@ -582,15 +582,15 @@ for a in "$@"; do
     --purge)         PURGE=1 ;;
     --keep-packages) KEEP_PKGS=1 ;;
     -h|--help|help)  usage; exit 0 ;;
-    # Once a subcommand is locked (esp. `say`), later words are its arguments — a second
+    # Once a subcommand is locked (esp. `say`), later words are its arguments, a second
     # command-looking token must NOT overwrite it (so `./ai-linux say start the show` works).
     setup|doctor|uninstall|revert|start|tui|download|say)
                      if [ "${SUB_LOCKED:-0}" = 1 ]; then ARGS+=("$a")
                      else case "$a" in revert) SUB="uninstall" ;; *) SUB="$a" ;; esac; SUB_LOCKED=1; fi ;;
-    *)               # pass flags and `say` text through; a bare unknown word is a typo'd command —
+    *)               # pass flags and `say` text through; a bare unknown word is a typo'd command,
                      # fail fast instead of forwarding it to `glados start` (confusing error)
                      if [ "$SUB" = "say" ] || [[ "$a" == -* ]]; then ARGS+=("$a")
-                     else c_err "unknown command '$a' — commands: setup · doctor · download · say · tui · uninstall · start (default). See --help"; exit 1; fi ;;
+                     else c_err "unknown command '$a', commands: setup · doctor · download · say · tui · uninstall · start (default). See --help"; exit 1; fi ;;
   esac
 done
 
@@ -599,28 +599,28 @@ case "$SUB" in
   setup)    cmd_setup; exit 0 ;;
   doctor)   cmd_doctor; exit 0 ;;
   uninstall) cmd_uninstall; exit 0 ;;
-  download) env_exists || { c_err "no env yet — run ./ai-linux setup first"; exit 1; }
+  download) env_exists || { c_err "no env yet, run ./ai-linux setup first"; exit 1; }
             exec "$CONDA" run --no-capture-output -n "$ENV_NAME" glados download ;;
   *)        # Windowless desktop launch (GNOME icon sets AI_LINUX_DESKTOP=1, Terminal=false): no
             # terminal, so log to a file AND surface a fatal startup error as a desktop notification.
-            # A plain shell run — even piped or redirected — keeps its own stdout/stderr untouched.
+            # A plain shell run, even piped or redirected, keeps its own stdout/stderr untouched.
             DESKTOP_LAUNCH=0
             if [ -n "${AI_LINUX_DESKTOP:-}" ]; then
               DESKTOP_LAUNCH=1
               LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-linux"; mkdir -p "$LOG_DIR"
               exec >>"$LOG_DIR/run.log" 2>&1
-              set_colors   # stdout/stderr are the log file now — drop the ANSI escapes
+              set_colors   # stdout/stderr are the log file now, drop the ANSI escapes
               echo "===== $(date '+%Y-%m-%d %H:%M:%S') ai-linux $SUB ====="
               # Notify on abnormal exit only: skip user-initiated stops (130=SIGINT, 143=SIGTERM) and
-              # label by runtime — a crash hours in is not a startup failure.
+              # label by runtime, a crash hours in is not a startup failure.
               RUN_T0=$SECONDS
               trap 'rc=$?; if [ $rc -ne 0 ] && [ $rc -ne 130 ] && [ $rc -ne 143 ] && command -v notify-send >/dev/null 2>&1; then
                       [ $((SECONDS - RUN_T0)) -lt 60 ] && m="Failed to start" || m="Stopped unexpectedly"
-                      notify-send -u critical "AI Linux Assistant" "$m — see $LOG_DIR/run.log"
+                      notify-send -u critical "AI Linux Assistant" "$m, see $LOG_DIR/run.log"
                     fi' EXIT
             fi
             # Single instance. Two engines share ONE mic (the same AEC source), one overlay
-            # state.json/control.json and one Ollama — they hear each other speak, so barge-in aborts
+            # state.json/control.json and one Ollama, they hear each other speak, so barge-in aborts
             # every reply, and one "quit" click kills both. Model load takes ~35s, during which the
             # overlay still reads "not running" (state.json appears only once the bridge starts), so a
             # second click used to launch a second engine. The lock fd survives `exec` and is released
@@ -635,19 +635,19 @@ case "$SUB" in
                   # Don't bail instantly: a prior "stop" only sets shutdown_event, so the old
                   # process can still be mid-graceful-shutdown and holding this same lock. The
                   # engine's own shutdown watchdog force-exits by 8s no matter what, so this only
-                  # needs headroom over that (process teardown + conda run overhead) — flock -w
+                  # needs headroom over that (process teardown + conda run overhead), flock -w
                   # blocks until it's free instead of failing on that race.
                   LOCK_WAIT_S=15
-                  c_warn "a previous session is still active or shutting down — waiting up to ${LOCK_WAIT_S}s..."
+                  c_warn "a previous session is still active or shutting down, waiting up to ${LOCK_WAIT_S}s..."
                   [ "$DESKTOP_LAUNCH" = "1" ] && command -v notify-send >/dev/null 2>&1 \
                     && notify-send "AI Linux Assistant" "Waiting up to ${LOCK_WAIT_S}s for the previous session to stop..."
                   if ! flock -w "$LOCK_WAIT_S" 9; then
-                    c_warn "still busy after ${LOCK_WAIT_S}s — a previous session may be stuck; stop it from the top-bar icon or check run.log"
+                    c_warn "still busy after ${LOCK_WAIT_S}s, a previous session may be stuck; stop it from the top-bar icon or check run.log"
                     [ "$DESKTOP_LAUNCH" = "1" ] && command -v notify-send >/dev/null 2>&1 \
-                      && notify-send -u critical "AI Linux Assistant" "Still busy after ${LOCK_WAIT_S}s — a previous session may be stuck."
+                      && notify-send -u critical "AI Linux Assistant" "Still busy after ${LOCK_WAIT_S}s, a previous session may be stuck."
                     exit 0   # not a failure: exit 0 keeps the EXIT trap from crying "Failed to start"
                   fi
-                  c_warn "previous session stopped — starting now"
+                  c_warn "previous session stopped, starting now"
                 fi
               fi
             fi
@@ -663,10 +663,10 @@ case "$SUB" in
             if [ "$BARGE" = "1" ]; then
               if command -v pw-record >/dev/null 2>&1 && command -v pw-play >/dev/null 2>&1; then
                 export GLADOS_AUDIO_BACKEND=pipewire GLADOS_INTERRUPTIBLE=1
-                c_warn "barge-in ON (PipeWire WebRTC echo-cancel) — talk over the assistant on open speakers."
+                c_warn "barge-in ON (PipeWire WebRTC echo-cancel), talk over the assistant on open speakers."
                 c_warn "AEC auto-loads this session, unloads on exit (reversible). Use --half-duplex to disable."
               else
-                c_warn "barge-in needs PipeWire (pw-record/pw-play) — not found; using half-duplex this run."
+                c_warn "barge-in needs PipeWire (pw-record/pw-play), not found; using half-duplex this run."
               fi
             fi
             case "$OMODE" in wake|click|always) ;; *) c_warn "unknown overlay mode '$OMODE'; using wake"; OMODE="wake" ;; esac

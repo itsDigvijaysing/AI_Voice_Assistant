@@ -2,7 +2,7 @@
 name: open-terminal
 trigger: user asks to open a terminal, command line, console, shell, or terminal window
 tools: [mcp.shell.run_command]
-requires: GNOME terminal app — Ptyxis on Ubuntu 26.04; user-level, no sudo
+requires: GNOME terminal app. Ptyxis on Ubuntu 26.04; user-level, no sudo
 ---
 
 Open the terminal via mcp.shell.run_command (no sudo):

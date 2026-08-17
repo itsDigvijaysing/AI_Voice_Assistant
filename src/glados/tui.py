@@ -1426,13 +1426,13 @@ class GladosUI(App[None]):
             else:
                 updates["input_mode"] = self._input_mode_override
         elif glados_config.input_mode == "text":
-            # Config file sets input_mode: "text" but TUI is running — remap to "none"
+            # Config file sets input_mode: "text" but TUI is running, remap to "none"
             # to prevent TextListener from competing with Textual for stdin, which causes
             # keyboard input to require multiple keystrokes. The TUI Input widget submits
             # text via submit_text_input() instead.
             updates["input_mode"] = "none"
         elif glados_config.input_mode == "both":
-            # Config file sets input_mode: "both" but TUI is running — remap to "audio"
+            # Config file sets input_mode: "both" but TUI is running, remap to "audio"
             # so audio ASR stays active while TextListener is suppressed to avoid stdin
             # contention with Textual. Text input is handled by the TUI Input widget.
             updates["input_mode"] = "audio"

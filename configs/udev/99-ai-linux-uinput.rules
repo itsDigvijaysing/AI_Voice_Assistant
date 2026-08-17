@@ -1,6 +1,6 @@
-# AI Linux Assistant — grant the ACTIVE logged-in user access to /dev/uinput (for ydotool input
+# AI Linux Assistant, grant the ACTIVE logged-in user access to /dev/uinput (for ydotool input
 # injection) WITHOUT putting them in the `input` group. The `uaccess` tag makes systemd-logind add a
-# per-session ACL, so only the currently-logged-in user gets access — and it grants uinput (input
+# per-session ACL, so only the currently-logged-in user gets access, and it grants uinput (input
 # *injection*) only, NOT read access to /dev/input/event* (which would allow system-wide keylogging
 # and defeat Wayland's input isolation). Installed by `./ai-linux setup` to /etc/udev/rules.d/.
 KERNEL=="uinput", TAG+="uaccess", OPTIONS+="static_node=uinput"

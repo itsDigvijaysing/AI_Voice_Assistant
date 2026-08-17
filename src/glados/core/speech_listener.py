@@ -357,11 +357,11 @@ class SpeechListener:
                 }
                 if continuation:
                     # This segment only exists because it barged in on a turn that hadn't
-                    # finished answering yet — it's the rest of the same thought, not a new one.
+                    # finished answering yet; it's the rest of the same thought, not a new one.
                     queued_item["_continuation"] = True
                 if woke_from_sleep:
                     queued_item["_wake_note"] = (
-                        "The user just said the wake word again — you are awake and listening "
+                        "The user just said the wake word again. You are awake and listening "
                         "now. Disregard any earlier note that you were asleep; respond normally "
                         "to what they say."
                     )

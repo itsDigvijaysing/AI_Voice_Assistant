@@ -32,7 +32,7 @@ class AudioProtocol(Protocol):
         """Play the buffered audio and report (interrupted, percent_played).
 
         Contract: ``(True, n)`` = interrupted at n%; ``(False, 100)`` = completed normally;
-        ``(False, -1)`` = DROPPED (nothing was heard — e.g. player binary missing, temp-write or
+        ``(False, -1)`` = DROPPED (nothing was heard, e.g. player binary missing, temp-write or
         output-stream open failed). Callers must NOT record the reply as spoken on a drop.
         """
         ...

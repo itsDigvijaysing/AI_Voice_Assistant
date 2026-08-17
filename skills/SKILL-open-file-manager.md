@@ -2,7 +2,7 @@
 name: open-file-manager
 trigger: user asks to open the file manager, files, open a folder, show my home / downloads / documents / pictures folder, or browse files
 tools: [mcp.shell.run_command]
-requires: xdg-utils + Nautilus (GNOME Files) — present on Ubuntu 26.04; user-level, no sudo
+requires: xdg-utils + Nautilus (GNOME Files), present on Ubuntu 26.04; user-level, no sudo
 ---
 
 Open a folder via mcp.shell.run_command (no sudo):
