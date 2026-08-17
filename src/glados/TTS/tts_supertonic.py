@@ -40,10 +40,8 @@ class SpeechSynthesizer:
         # GLADOS_TTS_THREADS overrides; None lets onnxruntime pick a sensible default.
         threads = os.environ.get("GLADOS_TTS_THREADS", "")
         n_threads = int(threads) if threads.isdigit() else None
-        # Fully local by default: load the ONNX weights from the local cache with NO
-        # network call. Only reach out — once — if the model has never been fetched on
-        # this machine; after that first download it runs entirely offline. (Inference is
-        # always 100% local/on-device; there is no cloud TTS.)
+        # Load from the local cache with no network call; reach out only once, if the weights have
+        # never been fetched on this machine. Inference is always on-device.
         try:
             self._tts = TTS(model="supertonic-3", auto_download=False, intra_op_num_threads=n_threads)
         except Exception as exc:  # noqa: BLE001 - usually "not cached yet"; retry once with download
@@ -56,10 +54,8 @@ class SpeechSynthesizer:
         self.sample_rate: int = int(self._tts.sample_rate)  # 44100
         self._lang = lang
         self._voice = voice
-        # Guards the voice-style swap: set_voice() runs on the overlay-bridge thread while
-        # generate_speech_audio() runs on the TTS thread. The lock is held only for the
-        # reference read/swap (not the slow synthesis), so a live voice change is atomic and
-        # takes effect at the next utterance rather than tearing the current one.
+        # Guards the style swap: set_voice() runs on the bridge thread, synthesis on the TTS thread.
+        # Held only for the reference read/swap, so a live change lands at the next utterance.
         self._lock = threading.Lock()
         self._style = self._make_style(voice)
         logger.info("SuperTonic TTS ready (voice={}, {} Hz)", voice, self.sample_rate)

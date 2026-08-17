@@ -98,9 +98,8 @@ class OverlayBridge:
         self._idle_since: float | None = None
 
     def start(self) -> None:
-        # Ignore a control.json left over from a previous run: seed the mtime watermark to the
-        # existing file's mtime so only commands written AFTER startup are applied. Otherwise the
-        # first loop tick re-applies the stale command and clobbers the configured startup mode.
+        # Seed the watermark from any control.json left by a previous run, so only commands written
+        # after startup apply — otherwise the first tick replays a stale one over the startup mode.
         try:
             self._last_control_mtime_ns = self.control_path.stat().st_mtime_ns
             self._last_control_raw = self.control_path.read_text()  # seed content too, or the first
@@ -259,9 +258,8 @@ class OverlayBridge:
         voice = str(voice)
         if voice == self._last_voice_applied:
             return
-        # Latch only after set_voice actually succeeds. A failing value (bad id, or a TTS with no runtime
-        # switching) must not call set_voice 10x/sec forever, so back off and give up after a few tries;
-        # the counter resets when a *different* voice is requested.
+        # Latch only after set_voice succeeds; a failing value must not retry 10x/sec forever, so back
+        # off and give up after a few tries. The counter resets when a different voice is requested.
         now = time.time()
         attempts = 0
         if self._voice_attempt and self._voice_attempt[0] == voice:

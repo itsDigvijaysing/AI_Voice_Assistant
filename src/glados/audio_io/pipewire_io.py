@@ -190,10 +190,8 @@ class PipeWireAudioIO:
                 except Exception:  # noqa: BLE001
                     pass
             self._rec_proc = None
-        # Join the reader (its blocking read unblocks on the proc's EOF above) BEFORE a restart's
-        # _stop_rec.clear(), so a quick stop->start never runs two readers on the one sample queue.
-        # Only drop the reference once it's actually dead; if the join times out, keep it so the next
-        # start_listening's guard re-joins it instead of spawning a second reader alongside it.
+        # Join the reader before a restart clears _stop_rec, so a quick stop->start never runs two
+        # readers on one queue. Keep the reference if the join times out, so the next start re-joins it.
         reader = self._reader
         if reader is not None and reader.is_alive():
             reader.join(timeout=1.5)
@@ -218,9 +216,8 @@ class PipeWireAudioIO:
             return False, -1  # sentinel: nothing queued, nothing played
         sr = sample_rate or self._pending_sample_rate
         stop = self._stop_event
-        # pw-play needs a recognized container (raw PCM via stdin is rejected by libsndfile), so write a
-        # temp WAV on tmpfs and play the file. pw-play blocks for the clip's duration (verified), which is
-        # exactly the playback monitoring the engine needs; terminating it gives prompt barge-in.
+        # pw-play rejects raw PCM on stdin, so write a temp WAV on tmpfs and play the file. It blocks
+        # for the clip's duration, which is the playback monitoring the engine needs for barge-in.
         path = os.path.join(self._tmpdir, f"ai_tts_{secrets.token_hex(8)}.wav")  # unpredictable temp name
         try:
             sf.write(path, np.clip(audio, -1.0, 1.0).astype(np.float32), sr)
