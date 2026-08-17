@@ -419,10 +419,8 @@ class LanguageModelProcessor:
                     self._process_sentence_for_tts([segment])
                 flushed_to = i + 1
         remainder = text[flushed_to:]
-        # Safety valve: a long run with no sentence terminator at all (e.g. a comma-free list)
-        # would otherwise buffer until end-of-stream. Once it grows past a sane bound, flush up to
-        # the last space so TTS can start, keeping only the trailing partial word. Normal text hits
-        # a terminator long before this, so it never triggers.
+        # Safety valve for a long run with no sentence terminator, which would buffer until
+        # end-of-stream: flush to the last space so TTS can start, keeping the partial word.
         if len(remainder) > 1000:
             cut = remainder.rstrip().rfind(" ")
             if cut <= 0:
@@ -740,19 +738,14 @@ class LanguageModelProcessor:
                     inflight_guard = True
                 else:
                     inflight_guard = False
-                # A wake-from-sleep transition (see speech_listener) rides in on the same queue
-                # item as the user's message so it's part of THIS turn's request, not a separate
-                # dequeue-triggered turn of its own. Stored as its own system message so the
-                # user's actual words stay unmodified in history.
+                # A wake-from-sleep transition rides in on the same queue item, so it belongs to
+                # THIS turn. Kept as its own system message so the user's words stay unmodified.
                 wake_note = llm_input.get("_wake_note")
                 if wake_note:
                     self._conversation_store.append({"role": "system", "content": str(wake_note)})
 
-                # Barge-in resume: this fragment only arrived because it interrupted a turn that
-                # never got answered (see speech_listener._interrupted_pending_turn) — it's the
-                # rest of the same thought. Fold it into that still-unanswered user message instead
-                # of stacking a new turn, so the model sees one complete utterance and the aborted
-                # partial turns stop competing with each other for a reply.
+                # Barge-in resume: this fragment interrupted a turn that was never answered, so it
+                # is the rest of that thought — fold it in rather than stacking a competing turn.
                 merged_into_previous = False
                 if llm_input.get("_continuation") and llm_message.get("role") == "user":
                     history = self._conversation_store.snapshot()
@@ -777,10 +770,8 @@ class LanguageModelProcessor:
                     self._conversation_store.append(llm_message)
 
                 allow_tools = bool(llm_input.get("_allow_tools", True))
-                # Skills are native function-calling tools (mcp.skills_actions.*): the model selects them
-                # directly from the tool list, so there is NO per-turn keyword retrieval / command-suffix
-                # injection / tool-narrowing (that fragile machinery misfired on ambient words and hid the
-                # model's own capabilities). The curated tool set every turn IS the model's skill menu.
+                # Skills are native function-calling tools, so there is NO per-turn retrieval, command
+                # injection or tool-narrowing — that misfired on ambient words. The tool set IS the menu.
                 tools = self._build_tools(autonomy_mode) if allow_tools else []
                 tool_names = {
                     tool.get("function", {}).get("name", "")
@@ -818,10 +809,8 @@ class LanguageModelProcessor:
                         in_thinking = False
                         harmony_mode = False
                         native_ollama = self._ollama_mode and not request_url.endswith("/v1/chat/completions")
-                        # Reasoning toggle: only the native Ollama /api/chat accepts a top-level
-                        # `think` boolean (qwen3 etc.). Sending `think: false` skips the <think>
-                        # trace entirely → first speakable token arrives immediately (low latency).
-                        # The OpenAI-compatible fallback has no such field, so strip it there.
+                        # Only the native Ollama /api/chat accepts a top-level `think` boolean;
+                        # the OpenAI-compatible fallback has no such field, so strip it there.
                         if native_ollama and self._think is not None:
                             data["think"] = self._think
                         else:
@@ -867,18 +856,15 @@ class LanguageModelProcessor:
                                                 if isinstance(chunk, list):
                                                     self._process_tool_chunks(tool_calls_buffer, chunk)
                                                 elif not autonomy_mode:
-                                                    # Interactive lane only: stream spoken text. In autonomy
-                                                    # mode, agents communicate via tool calls (e.g. speak());
-                                                    # raw streamed text is intentionally not sent to TTS.
-                                                    # Extract thinking tags before TTS (auto-detects format)
+                                                    # Interactive lane only: in autonomy mode agents
+                                                    # speak via tool calls, so raw text skips TTS.
                                                     speakable, in_thinking, harmony_mode = self._extract_thinking(
                                                         chunk, in_thinking, thinking_buffer, harmony_mode
                                                     )
                                                     if speakable:
                                                         sentence_buffer.append(speakable)
-                                                        # Emit every COMPLETE sentence as it forms so
-                                                        # TTS starts within a sentence of the model
-                                                        # beginning — not after the whole reply.
+                                                        # Emit each COMPLETE sentence as it forms so
+                                                        # TTS starts a sentence in, not at the end.
                                                         sentence_buffer = self._flush_streamed_sentences(
                                                             sentence_buffer
                                                         )
