@@ -97,7 +97,6 @@ class OverlayBridge:
         self._saw_turn = False
         self._idle_since: float | None = None
 
-    # ------------------------------------------------------------------ lifecycle
     def start(self) -> None:
         # Ignore a control.json left over from a previous run: seed the mtime watermark to the
         # existing file's mtime so only commands written AFTER startup are applied. Otherwise the
@@ -123,7 +122,6 @@ class OverlayBridge:
         except Exception:
             pass
 
-    # ------------------------------------------------------------------ mic control
     def _listening(self) -> bool:
         return getattr(getattr(self.engine, "audio_io", None), "input_stream", None) is not None
 
@@ -207,7 +205,6 @@ class OverlayBridge:
             self._set_muted(False)
             self._set_listening(True)
 
-    # ------------------------------------------------------------------ control file
     def _read_control(self) -> None:
         try:
             mtime_ns = self.control_path.stat().st_mtime_ns
@@ -287,7 +284,6 @@ class OverlayBridge:
             if attempts >= 3:
                 logger.warning("OverlayBridge: giving up on voice '{}' after {} failed attempts", voice, attempts)
 
-    # ------------------------------------------------------------------ transcript
     def _scan_transcript(self) -> None:
         bus = getattr(self.engine, "observability_bus", None)
         if bus is None:
@@ -318,7 +314,6 @@ class OverlayBridge:
                 self._assistant_ts = ts
         self._last_event_ts = newest
 
-    # ------------------------------------------------------------------ state machine
     def _busy(self) -> tuple[bool, bool]:
         speaking = False
         audio = getattr(self.engine, "audio_io", None)
@@ -364,7 +359,6 @@ class OverlayBridge:
             self._activated = False
             self._set_listening(False)  # clicked but never spoke -> release
 
-    # ------------------------------------------------------------------ loop + write
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:

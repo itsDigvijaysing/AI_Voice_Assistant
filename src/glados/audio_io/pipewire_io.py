@@ -74,7 +74,6 @@ class PipeWireAudioIO:
         atexit.register(self._teardown_aec)
         self._ensure_aec()  # eager: AEC source/sink ready before the first capture or announcement
 
-    # ------------------------------------------------------------------ AEC module
     def _node_exists(self, name: str) -> bool:
         try:
             out = subprocess.run(["pw-cli", "ls", "Node"], capture_output=True, text=True, timeout=4).stdout
@@ -122,7 +121,6 @@ class PipeWireAudioIO:
                 pass
             self._aec_proc = None
 
-    # ------------------------------------------------------------------ capture
     def get_sample_queue(self) -> queue.Queue[tuple[NDArray[np.float32], bool]]:
         return self._sample_queue
 
@@ -203,7 +201,6 @@ class PipeWireAudioIO:
             self._reader = None
         self.input_stream = None
 
-    # ------------------------------------------------------------------ playback
     def start_speaking(self, audio_data: NDArray[np.float32], sample_rate: int | None = None, text: str = "") -> None:
         if not isinstance(audio_data, np.ndarray) or audio_data.size == 0:
             raise ValueError("Invalid audio data")

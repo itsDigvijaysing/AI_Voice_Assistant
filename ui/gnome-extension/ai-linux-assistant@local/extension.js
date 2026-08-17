@@ -38,7 +38,6 @@ const PIN_TIMEOUT_MS = 30000;
 const LOG_MAX = 24;
 const STARTING_TIMEOUT = 60000;   // stop the "starting" blink if the engine never comes up
 
-// ---------------------------------------------------------------- animated orb
 // A flowing multi-colour "plasma" orb drawn with Cairo on an St.DrawingArea at ~30fps. Cairo (not a GPU
 // shader) renders identically offline and live, so the look is predictable. Each state has its OWN palette,
 // motion mode and speed so it reads at a glance: idle drifts slowly, listening ripples, thinking swirls
@@ -180,7 +179,6 @@ class Orb extends St.DrawingArea {
     }
 });
 
-// ---------------------------------------------------------------- floating overlay
 const Overlay = GObject.registerClass(
 class Overlay extends St.BoxLayout {
     _init() {
@@ -281,7 +279,6 @@ class Overlay extends St.BoxLayout {
     }
 });
 
-// ---------------------------------------------------------------- top-bar indicator + menu
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init(cb) {
