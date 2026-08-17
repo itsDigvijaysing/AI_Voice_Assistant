@@ -256,7 +256,7 @@ data/             # ASR warm-up sample + demo assets
 ---
 
 ## Status
-**v2.5.1.** The native-tools pivot (skills are typed function-calling tools, reasoning on), a shared-core
+**v2.5.2.** The native-tools pivot (skills are typed function-calling tools, reasoning on), a shared-core
 Settings/preferences system with versioning, kernel-enforced shell resource caps, the window-control service
 merged into the single overlay extension, and a Todoist integration (check/add tasks by voice). Verified:
 configs load; safety gate + the autonomy hard-floor; catastrophic denylist (42 blocked / 19 benign); and a
