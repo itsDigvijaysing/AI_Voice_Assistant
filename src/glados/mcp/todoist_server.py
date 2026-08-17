@@ -60,9 +60,8 @@ def list_tasks(filter: str = "today") -> str:
     f = (filter or "").strip()
     try:
         if f and f.lower() != "all":
-            # NOTE: verified against the live API — despite what the hosted docs page says, the
-            # query-string param this endpoint actually requires is "query", not "filter" (a
-            # "filter" param 400s with error_tag ARGUMENT_MISSING pointing at "query").
+            # Verified against the live API: this endpoint needs "query", not the "filter" the docs
+            # show — a "filter" param 400s with ARGUMENT_MISSING.
             resp = requests.get(f"{_API_BASE}/tasks/filter", headers=headers, params={"query": f}, timeout=_TIMEOUT)
         else:
             resp = requests.get(f"{_API_BASE}/tasks", headers=headers, timeout=_TIMEOUT)

@@ -80,9 +80,8 @@ class SpeechListener:
         self.wake_word = wake_word.lower() if wake_word else None
         self.pause_time = pause_time
         self.interruptible = interruptible
-        # Half-duplex echo suppression (used only when not interruptible): keep ignoring
-        # the mic for this long after the assistant stops speaking, to cover the speaker/
-        # room acoustic tail and any frames already buffered during playback.
+        # Half-duplex echo suppression (non-interruptible only): ignore the mic this long after
+        # the assistant stops, covering the room's acoustic tail and frames buffered mid-playback.
         self._echo_hangover_s = echo_hangover_s
         self._last_spoke_at: float | None = None
         self._was_speaking = False  # edge-detects end-of-reply, to re-arm the wake window below
@@ -95,9 +94,8 @@ class SpeechListener:
         self._recording_started = False
         self._samples: list[NDArray[np.float32]] = []
         self._gap_counter = 0
-        # Set when this segment's own VAD trigger aborted a still-in-flight turn (barge-in while
-        # speaking/thinking) — tells _process_detected_audio to fold the resulting text into that
-        # unanswered turn instead of queuing a competing one. Consumed (reset) exactly once per segment.
+        # Set when this segment's VAD trigger aborted an in-flight turn, so _process_detected_audio
+        # folds the text into that unanswered turn. Consumed exactly once per segment.
         self._interrupted_pending_turn = False
 
         self.shutdown_event = shutdown_event
@@ -109,10 +107,8 @@ class SpeechListener:
         self._audio_state = audio_state
         self._on_interrupt = on_interrupt
 
-        # Wake-word conversation window: once the wake word is heard, the assistant stays active for
-        # this many seconds WITHOUT needing the wake word again, refreshed on every utterance — so a
-        # back-and-forth flows naturally and it only re-arms after a silence. GLADOS_WAKE_SESSION_S
-        # overrides; <=0 disables (then every command needs the wake word).
+        # Wake-word conversation window: seconds the assistant stays active without the wake word,
+        # refreshed per utterance. GLADOS_WAKE_SESSION_S overrides; <=0 disables.
         try:
             self._wake_session_s = float(os.environ.get("GLADOS_WAKE_SESSION_S", "30") or "30")
         except ValueError:
@@ -179,11 +175,8 @@ class SpeechListener:
         if speaking_now:
             self._last_spoke_at = time.monotonic()
         elif self._was_speaking and self.wake_word:
-            # Falling edge: the assistant just finished its reply. The window was only ever
-            # refreshed on an ACCEPTED USER utterance, so a long LLM/TTS turn (or a reply that
-            # ends by asking the user something) could consume the whole window and leave no
-            # time to answer. Re-arm here so the window covers "the user's turn to respond",
-            # not just "time since they last spoke".
+            # Falling edge: the window only refreshed on user utterances, so a long turn could eat
+            # it entirely. Re-arm here so it covers the user's turn to respond.
             self._wake_session_until = time.monotonic() + self._wake_session_s
         self._was_speaking = speaking_now
         if self._audio_state is not None:
@@ -210,13 +203,8 @@ class SpeechListener:
             sample: The current audio sample (numpy array) to be added to the buffer.
             vad_confidence: True if voice activity is detected in the sample, False otherwise.
         """
-        # AI_Linux half-duplex echo suppression: with no acoustic echo cancellation on the
-        # raw-ALSA capture path, the assistant's own TTS played over the speakers is picked
-        # up by the open mic and would be transcribed as if the user said it. When not
-        # interruptible, drop the mic entirely while the assistant is speaking AND for a
-        # short hangover afterwards (clearing the pre-activation buffer so no self-audio is
-        # retained). With interruptible=True (headphones / AEC) this is skipped and real
-        # voice barge-in is preserved below.
+        # Half-duplex echo suppression: with no AEC on the raw-ALSA path the mic transcribes our own
+        # TTS, so drop it while speaking plus a hangover. Skipped when interruptible (headphones/AEC).
         if not self.interruptible and self._in_echo_window():
             self._buffer.clear()
             return
@@ -227,10 +215,8 @@ class SpeechListener:
             # Check if this is an interrupt (user speaking while the assistant is busy)
             was_speaking = self.currently_speaking_event.is_set()
 
-            # Abort the in-flight turn on a real barge-in: while speaking (any mode), OR while merely
-            # thinking/synthesizing only when interruptible (headphones/AEC, no self-echo risk). In the
-            # non-interruptible case the abort stays gated on was_speaking so the assistant's own TTS
-            # can't false-abort its reply (clearing on every utterance was killing replies).
+            # Abort on real barge-in: while speaking in any mode, or while thinking only when
+            # interruptible. Gating on was_speaking stops our own TTS false-aborting the reply.
             if was_speaking or (self.interruptible and self.processing_active_event.is_set()):
                 self.audio_io.stop_speaking()
                 self.processing_active_event.clear()
@@ -352,13 +338,8 @@ class SpeechListener:
             elif self.wake_word and not self.in_wake_session() and not self._wakeword_detected(detected_text):
                 logger.info(f"Required wake word {self.wake_word=} not detected (no active session).")
             else:
-                # (re)arm the conversation window so follow-ups don't need the wake word again. If
-                # we were NOT already in a session, this utterance is what just reopened it (e.g.
-                # after go_to_sleep). The conversation history can still hold the model's own
-                # earlier "I'm asleep" tool result, and nothing else tells it that's no longer
-                # true — without a cue it just keeps repeating that instead of answering. _wake_note
-                # carries a one-turn system reminder for exactly that transition; llm_processor
-                # inserts it into history alongside this message, not as a separate turn.
+                # (re)arm the window so follow-ups skip the wake word. On reopening, history still
+                # holds the old "I'm asleep" result, so _wake_note carries a one-turn cue past it.
                 woke_from_sleep = bool(self.wake_word) and not self.in_wake_session()
                 if self.wake_word:
                     self._wake_session_until = time.monotonic() + self._wake_session_s

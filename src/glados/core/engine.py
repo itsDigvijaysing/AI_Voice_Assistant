@@ -108,9 +108,8 @@ class GladosConfig(BaseModel):
     completion_url: HttpUrl
     api_key: str | None
     interruptible: bool
-    # Reasoning ("thinking") toggle for Ollama thinking-capable models (qwen3, deepseek-r1, …).
-    # None = leave the model's default (upstream behavior, param not sent). False = disable
-    # reasoning for snappy low-latency voice replies (sends Ollama `think: false`). True = force on.
+    # Reasoning toggle for Ollama thinking-capable models. None = model default (param not sent),
+    # False = off for snappy voice replies, True = force on.
     llm_think: bool | None = None
     audio_io: str
     input_mode: Literal["audio", "text", "both"] = "audio"
@@ -327,9 +326,8 @@ class Glados:
             asr_muted (bool): Whether ASR starts muted.
             llm_headers (dict[str, str] | None): Extra headers for LLM requests.
         """
-        # AI_Linux: if the overlay is enabled, show a live 'loading' pulse during the slow CPU model
-        # init below. Re-stamped at key points (after MCP startup, again in run()) so its heartbeat
-        # ts never goes stale before the OverlayBridge thread takes over. Must never break init.
+        # AI_Linux: show a live 'loading' pulse during the slow CPU init below. Re-stamped at key
+        # points so the heartbeat never goes stale before the OverlayBridge thread takes over.
         self._announce_overlay_loading()
 
         self._asr_model = asr_model
@@ -389,10 +387,8 @@ class Glados:
         self.currently_speaking_event = threading.Event()  # Indicates if the assistant is currently speaking
         self.shutdown_event = threading.Event()  # Event to signal shutdown of all threads
 
-        # Initialize shutdown orchestrator for graceful shutdown. All component threads are
-        # daemon=True (see _register below), so these bounds don't need to be generous "wait for
-        # in-flight work" windows — the _HARD_EXIT_TIMEOUT_S watchdog in _graceful_shutdown is the
-        # real backstop; these just keep the normal case snappy instead of padding every stop.
+        # All component threads are daemon=True, so these bounds only keep the normal case snappy —
+        # the _HARD_EXIT_TIMEOUT_S watchdog in _graceful_shutdown is the real backstop.
         self._shutdown_orchestrator = ShutdownOrchestrator(
             shutdown_event=self.shutdown_event,
             global_timeout=5.0,
@@ -436,10 +432,8 @@ class Glados:
         # Initialize spoken text converter, that converts text to spoken text. eg. 12 -> "twelve"
         self._stc = stc.SpokenTextConverter()
 
-        # warm up onnx ASR model, this is needed to avoid long pauses on first request.
-        # AI_Linux: run it on a background thread so the multi-second CPU warm-up overlaps the rest
-        # of init (MCP spawn, audio setup). run() joins this before the listen loop starts, so the
-        # model is always warm before the first real capture.
+        # Warm up the ONNX ASR model to avoid a long pause on the first request. AI_Linux: on a
+        # background thread so it overlaps the rest of init; run() joins it before the listen loop.
         def _warm_up_asr() -> None:
             try:
                 self._asr_model.transcribe_file(resource_path("data/0.wav"))
@@ -652,11 +646,8 @@ class Glados:
                     daemon=True,
                 )
 
-        # Define thread configurations with daemon settings and shutdown priorities.
-        # AI_Linux: ALL daemon=True. The orchestrator's bounded join IS the grace period for in-flight
-        # state — but a NON-daemon thread is re-joined by the interpreter at exit with no timeout, so a
-        # thread the orchestrator had already given up on (e.g. ToolExecutor mid-30s-tool) hung the
-        # process forever, right after logging "Graceful shutdown complete". Daemon makes it exit.
+        # AI_Linux: ALL daemon=True. A non-daemon thread is re-joined at exit with no timeout, so one
+        # the orchestrator gave up on hung the process forever after "Graceful shutdown complete".
         thread_configs: dict[str, tuple[Any, bool, ShutdownPriority, queue.Queue | None]] = {
             "LLMProcessor": (
                 self.llm_processor.run,
@@ -1025,9 +1016,8 @@ class Glados:
         else:
             logger.info("Text input mode active. Audio input is disabled.")
 
-        # AI_Linux: optional on-screen overlay bridge (state.json out / control.json in).
-        # Enabled by GLADOS_OVERLAY=1 (set by the ai-linux launcher). Drives the GNOME Shell
-        # overlay and its listening-mode controls (always / wake / click + mute).
+        # AI_Linux: optional overlay bridge (state.json out / control.json in), enabled by
+        # GLADOS_OVERLAY=1. Drives the GNOME Shell overlay and its listening-mode controls.
         self._overlay_bridge = None
         if os.environ.get("GLADOS_OVERLAY", "").strip().lower() in {"1", "true", "yes", "on"}:
             try:
@@ -1053,12 +1043,8 @@ class Glados:
         finally:
             self._graceful_shutdown()
 
-    # Hard ceiling on the whole graceful sequence below. We're exiting the process either way, so
-    # there is nothing to preserve by waiting out a stuck component — force-exit beats a launcher
-    # that sits on a held flock. Runs on its own daemon thread so a slow-but-still-daemon component
-    # thread can never stop it from firing. NOTE: os._exit() skips atexit (e.g. pipewire_io's AEC
-    # module unload) — acceptable here since the next start's _ensure_aec() reuses an already-loaded
-    # module rather than erroring on it.
+    # Hard ceiling on the graceful sequence: we exit either way, so force-exit beats a launcher left
+    # on a held flock. Own daemon thread. NOTE: os._exit() skips atexit (pipewire's AEC unload).
     _HARD_EXIT_TIMEOUT_S = 8.0
 
     def _arm_shutdown_watchdog(self) -> None:
@@ -1077,11 +1063,8 @@ class Glados:
         logger.info("Beginning graceful shutdown...")
         self._arm_shutdown_watchdog()
 
-        # Cut any in-flight playback FIRST. AudioPlayer blocks in measure_percentage_spoken() for the
-        # whole clip and only re-checks shutdown_event between clips, so a quit landing mid-sentence
-        # used to keep talking to the end and then trip the 5s join timeout. This was previously done
-        # only on KeyboardInterrupt, which left the overlay's "quit" (it just sets shutdown_event) and
-        # SIGTERM without it.
+        # Cut in-flight playback FIRST: AudioPlayer blocks for a whole clip and only re-checks
+        # shutdown_event between clips, so a quit mid-sentence used to talk on and trip the join.
         if self.currently_speaking_event.is_set():
             try:
                 self.audio_io.stop_speaking()
@@ -1096,16 +1079,14 @@ class Glados:
             except Exception:  # noqa: BLE001
                 pass
 
-        # Stop subagents first (they may be using shared resources). Timeouts trimmed to leave the
-        # _HARD_EXIT_TIMEOUT_S watchdog above real headroom in the genuinely-stuck case, while
-        # keeping the normal (already-idle) case fast instead of padding out to the old 5-30s figures.
+        # Stop subagents first (they may hold shared resources). Timeouts trimmed to leave the
+        # _HARD_EXIT_TIMEOUT_S watchdog headroom while keeping the already-idle case fast.
         if self.subagent_manager:
             logger.debug("Shutting down subagent manager...")
             self.subagent_manager.shutdown(timeout=2.0)
 
-        # Stop task manager. wait=True with no timeout falls through to a raw
-        # ThreadPoolExecutor.shutdown(wait=True) with no bound — a stuck task would then hang the
-        # whole process (and the launcher's flock) forever.
+        # Stop task manager. wait=True with no timeout falls through to an unbounded
+        # ThreadPoolExecutor.shutdown(wait=True) — a stuck task would hang the process forever.
         if self.autonomy_tasks:
             logger.debug("Shutting down task manager...")
             self.autonomy_tasks.shutdown(wait=True, timeout=2.0)

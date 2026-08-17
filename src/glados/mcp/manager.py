@@ -110,9 +110,8 @@ class MCPManager:
         if self._shutdown_async:
             self._loop.call_soon_threadsafe(self._shutdown_async.set)
         self._loop.call_soon_threadsafe(self._loop.stop)
-        # Daemon thread (see __init__); the process is exiting either way, so this just needs to be
-        # short enough to leave the engine's shutdown watchdog real headroom, not a "wait for
-        # in-flight MCP calls" window.
+        # Daemon thread and the process is exiting anyway, so this only needs to leave the engine's
+        # shutdown watchdog headroom — it is not a "wait for in-flight MCP calls" window.
         self._thread.join(timeout=2.0)
 
     def get_tool_definitions(self) -> list[dict[str, Any]]:
@@ -170,9 +169,8 @@ class MCPManager:
             resource_counts: dict[str, int] = {}
             for (server_name, _uri) in self._resource_cache.keys():
                 resource_counts[server_name] = resource_counts.get(server_name, 0) + 1
-        # _sessions is mutated on the MCP event-loop thread (connect/disconnect); snapshot
-        # defensively so a concurrent insert/pop can't raise "dictionary changed size during
-        # iteration". A transient miss just shows a server as (dis)connected until the next refresh.
+        # _sessions is mutated on the MCP event-loop thread, so snapshot it to avoid "dictionary
+        # changed size during iteration"; a transient miss self-corrects on the next refresh.
         connected: set[str] = set()
         for _ in range(3):
             try:
@@ -283,19 +281,14 @@ class MCPManager:
         if config.transport == "stdio":
             if not config.command:
                 raise MCPError(f"MCP server '{config.name}' requires a command for stdio transport.")
-            # The MCP SDK scrubs the child env to a safe default (HOME/PATH/SHELL/TERM/USER/LOGNAME) and DROPS
-            # the display/session vars — so GUI launches (gtk-launch/xdg-open/brave-browser) and the portal
-            # (XDG_RUNTIME_DIR/DBUS) fail. Passing a non-None env MERGES with that default, so we only add the
-            # missing GUI/session vars from our own environment. XAUTHORITY is required too: any Xwayland
-            # client (Chromium/Electron apps, X11-only tools) fails its auth handshake without it even
-            # with DISPLAY set — seen as "Authorization required, but no authorization protocol specified".
+            # The MCP SDK scrubs the child env and drops the display/session vars, breaking GUI launches
+            # and the portal. A non-None env merges, so add them back — XAUTHORITY too, for Xwayland.
             _GUI_ENV = (
                 "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
                 "XDG_CURRENT_DESKTOP", "XAUTHORITY",
             )
-            # Secrets an individual server reads from its own process env (e.g. todoist_server's
-            # TODOIST_API_TOKEN) — same scrubbing problem as the GUI vars above, so they need the
-            # same explicit passthrough. Never put a real secret in config.env (that's a committed file).
+            # Secrets a server reads from its own env (TODOIST_API_TOKEN) hit the same scrubbing, so
+            # pass them through explicitly. Never put a real secret in config.env — it is committed.
             _PASSTHROUGH_ENV = ("TODOIST_API_TOKEN",)
             env = {
                 **{k: os.environ[k] for k in (*_GUI_ENV, *_PASSTHROUGH_ENV) if k in os.environ},

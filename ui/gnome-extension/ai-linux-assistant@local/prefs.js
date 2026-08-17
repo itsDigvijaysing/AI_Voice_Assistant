@@ -1,8 +1,5 @@
-// Preferences window (Extension Manager -> Settings, or "All settings" in the top-bar menu).
-// Runs in a SEPARATE gjs process from the shell extension, so it must not import extension.js —
-// but it shares the SAME settings core (settingsLib.js): one storage contract, one set of options.
-// The top-bar menu live-syncs to every change made here via its settings.json file monitor.
-// Voice + listening also apply LIVE to a running engine via the bridge's runtime channels.
+// Preferences window (Extension Manager -> Settings, or "All settings" in the top-bar menu). Runs in a
+// separate gjs process, so it shares settingsLib.js rather than importing extension.js.
 
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';

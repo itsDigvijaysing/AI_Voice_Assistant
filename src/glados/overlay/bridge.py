@@ -62,6 +62,12 @@ class OverlayBridge:
     POLL = 0.1  # seconds between ticks (10 Hz)
     CLICK_GRACE = 2.0  # idle seconds after a turn before releasing the mic in click mode
     CLICK_TIMEOUT = 12.0  # if the user activates but never speaks, release after this
+    STOP_JOIN_TIMEOUT = 1.5  # seconds to wait for the loop thread on stop()
+    THINKING_TIMEOUT = 30.0  # cap on the 'thinking' state so a hung turn can't stick
+    HEARTBEAT = 2.0  # rewrite state.json at least this often so the UI can see the engine is alive
+    EVENT_SCAN_LIMIT = 80  # observability events examined per tick
+    VOICE_RETRIES = 3  # attempts before giving up on a failing voice id
+    VOICE_BACKOFF = 1.0  # seconds between those attempts
 
     def __init__(self, engine: object, mode: str | None = None, wake_word: str | None = None) -> None:
         self.engine = engine
@@ -88,7 +94,7 @@ class OverlayBridge:
         self._assistant_ts = 0.0  # liveness (also bumped by tts play events)
         self._reply_ts = 0.0  # bumped ONLY by 'reply' events -> the UI's new-bubble signal
         self._muted = False
-        self._last_written: tuple[str, str, str, str] | None = None
+        self._last_written: tuple[object, ...] | None = None
         self._last_write_at = 0.0  # wall-clock of the last state.json write (for the heartbeat)
 
         # click-mode activation tracking
@@ -97,11 +103,9 @@ class OverlayBridge:
         self._saw_turn = False
         self._idle_since: float | None = None
 
-    # ------------------------------------------------------------------ lifecycle
     def start(self) -> None:
-        # Ignore a control.json left over from a previous run: seed the mtime watermark to the
-        # existing file's mtime so only commands written AFTER startup are applied. Otherwise the
-        # first loop tick re-applies the stale command and clobbers the configured startup mode.
+        # Seed the watermark from any control.json left by a previous run, so only commands written
+        # after startup apply — otherwise the first tick replays a stale one over the startup mode.
         try:
             self._last_control_mtime_ns = self.control_path.stat().st_mtime_ns
             self._last_control_raw = self.control_path.read_text()  # seed content too, or the first
@@ -117,13 +121,12 @@ class OverlayBridge:
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=1.5)
+            self._thread.join(timeout=self.STOP_JOIN_TIMEOUT)
         try:
             self._write({"state": "off", "mode": self.mode, "you": self._you, "assistant": self._assistant})
         except Exception:
             pass
 
-    # ------------------------------------------------------------------ mic control
     def _listening(self) -> bool:
         return getattr(getattr(self.engine, "audio_io", None), "input_stream", None) is not None
 
@@ -207,7 +210,6 @@ class OverlayBridge:
             self._set_muted(False)
             self._set_listening(True)
 
-    # ------------------------------------------------------------------ control file
     def _read_control(self) -> None:
         try:
             mtime_ns = self.control_path.stat().st_mtime_ns
@@ -262,14 +264,13 @@ class OverlayBridge:
         voice = str(voice)
         if voice == self._last_voice_applied:
             return
-        # Latch only after set_voice actually succeeds. A failing value (bad id, or a TTS with no runtime
-        # switching) must not call set_voice 10x/sec forever, so back off and give up after a few tries;
-        # the counter resets when a *different* voice is requested.
+        # Latch only after set_voice succeeds; a failing value must not retry 10x/sec forever, so back
+        # off and give up after a few tries. The counter resets when a different voice is requested.
         now = time.time()
         attempts = 0
         if self._voice_attempt and self._voice_attempt[0] == voice:
             _, attempts, next_retry_ts = self._voice_attempt
-            if attempts >= 3 or now < next_retry_ts:
+            if attempts >= self.VOICE_RETRIES or now < next_retry_ts:
                 return
         setter = getattr(self.engine, "set_voice", None)
         ok = False
@@ -283,17 +284,16 @@ class OverlayBridge:
             self._voice_attempt = None
         else:
             attempts += 1
-            self._voice_attempt = (voice, attempts, now + 1.0)  # ~1s backoff, up to 3 tries
-            if attempts >= 3:
+            self._voice_attempt = (voice, attempts, now + self.VOICE_BACKOFF)
+            if attempts >= self.VOICE_RETRIES:
                 logger.warning("OverlayBridge: giving up on voice '{}' after {} failed attempts", voice, attempts)
 
-    # ------------------------------------------------------------------ transcript
     def _scan_transcript(self) -> None:
         bus = getattr(self.engine, "observability_bus", None)
         if bus is None:
             return
         try:
-            events = bus.snapshot(limit=80)
+            events = bus.snapshot(limit=self.EVENT_SCAN_LIMIT)
         except Exception:  # noqa: BLE001
             return
         newest = self._last_event_ts
@@ -318,7 +318,6 @@ class OverlayBridge:
                 self._assistant_ts = ts
         self._last_event_ts = newest
 
-    # ------------------------------------------------------------------ state machine
     def _busy(self) -> tuple[bool, bool]:
         speaking = False
         audio = getattr(self.engine, "audio_io", None)
@@ -329,7 +328,7 @@ class OverlayBridge:
                 speaking = False
         # 'thinking' = user spoke, no reply yet (transcript timeline, not the sticky engine latch);
         # 30s cap so a hung turn can't stick.
-        thinking = self._you_ts > self._assistant_ts and (time.time() - self._you_ts) < 30.0
+        thinking = self._you_ts > self._assistant_ts and (time.time() - self._you_ts) < self.THINKING_TIMEOUT
         return speaking, thinking
 
     def _derive_state(self) -> str:
@@ -364,7 +363,6 @@ class OverlayBridge:
             self._activated = False
             self._set_listening(False)  # clicked but never spoke -> release
 
-    # ------------------------------------------------------------------ loop + write
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -410,7 +408,7 @@ class OverlayBridge:
         now = time.time()
         # dedup identical states but heartbeat every 2s so the overlay can tell the engine is alive
         # (ts freshness); stale ts -> overlay shows 'off'.
-        if key == self._last_written and (now - self._last_write_at) < 2.0:
+        if key == self._last_written and (now - self._last_write_at) < self.HEARTBEAT:
             return
         self._last_written = key
         self._last_write_at = now

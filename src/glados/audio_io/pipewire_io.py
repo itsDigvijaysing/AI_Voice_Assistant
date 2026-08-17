@@ -74,7 +74,6 @@ class PipeWireAudioIO:
         atexit.register(self._teardown_aec)
         self._ensure_aec()  # eager: AEC source/sink ready before the first capture or announcement
 
-    # ------------------------------------------------------------------ AEC module
     def _node_exists(self, name: str) -> bool:
         try:
             out = subprocess.run(["pw-cli", "ls", "Node"], capture_output=True, text=True, timeout=4).stdout
@@ -122,7 +121,6 @@ class PipeWireAudioIO:
                 pass
             self._aec_proc = None
 
-    # ------------------------------------------------------------------ capture
     def get_sample_queue(self) -> queue.Queue[tuple[NDArray[np.float32], bool]]:
         return self._sample_queue
 
@@ -192,10 +190,8 @@ class PipeWireAudioIO:
                 except Exception:  # noqa: BLE001
                     pass
             self._rec_proc = None
-        # Join the reader (its blocking read unblocks on the proc's EOF above) BEFORE a restart's
-        # _stop_rec.clear(), so a quick stop->start never runs two readers on the one sample queue.
-        # Only drop the reference once it's actually dead; if the join times out, keep it so the next
-        # start_listening's guard re-joins it instead of spawning a second reader alongside it.
+        # Join the reader before a restart clears _stop_rec, so a quick stop->start never runs two
+        # readers on one queue. Keep the reference if the join times out, so the next start re-joins it.
         reader = self._reader
         if reader is not None and reader.is_alive():
             reader.join(timeout=1.5)
@@ -203,7 +199,6 @@ class PipeWireAudioIO:
             self._reader = None
         self.input_stream = None
 
-    # ------------------------------------------------------------------ playback
     def start_speaking(self, audio_data: NDArray[np.float32], sample_rate: int | None = None, text: str = "") -> None:
         if not isinstance(audio_data, np.ndarray) or audio_data.size == 0:
             raise ValueError("Invalid audio data")
@@ -221,9 +216,8 @@ class PipeWireAudioIO:
             return False, -1  # sentinel: nothing queued, nothing played
         sr = sample_rate or self._pending_sample_rate
         stop = self._stop_event
-        # pw-play needs a recognized container (raw PCM via stdin is rejected by libsndfile), so write a
-        # temp WAV on tmpfs and play the file. pw-play blocks for the clip's duration (verified), which is
-        # exactly the playback monitoring the engine needs; terminating it gives prompt barge-in.
+        # pw-play rejects raw PCM on stdin, so write a temp WAV on tmpfs and play the file. It blocks
+        # for the clip's duration, which is the playback monitoring the engine needs for barge-in.
         path = os.path.join(self._tmpdir, f"ai_tts_{secrets.token_hex(8)}.wav")  # unpredictable temp name
         try:
             sf.write(path, np.clip(audio, -1.0, 1.0).astype(np.float32), sr)

@@ -55,9 +55,8 @@ class SpeechSynthesizer:
         self.sample_rate = self.SAMPLE_RATE
         self.voices: dict[str, NDArray[np.float32]] = np.load(VOICES_PATH)
         self.vocab = self._get_vocab()
-        # Guards the live voice swap: set_voice() (overlay-bridge thread) vs the voice read in
-        # _synthesize_ids_to_audio() (TTS thread). Held only for the ref read/swap, so a runtime
-        # voice change applies cleanly at the next utterance. Mirrors tts_supertonic.py.
+        # Guards the live voice swap: set_voice() on the bridge thread vs the read on the TTS thread.
+        # Held only for the ref read/swap, so a change lands at the next utterance.
         self._lock = threading.Lock()
 
         self.set_voice(voice)
