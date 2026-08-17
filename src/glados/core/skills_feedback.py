@@ -22,10 +22,8 @@ def _log_path() -> Path:
     if not _DIR_READY:
         data.mkdir(parents=True, exist_ok=True)
         try:
-            # mkdir(mode=0o700) is a no-op when data/ already exists (it's git-tracked with committed
-            # assets), so the intended user-only perm was never applied — enforce it here. A 0700 dir
-            # blocks other users from traversing in to read the outcome log (records commands the
-            # assistant ran) regardless of the file's own mode.
+            # mkdir(mode=) is a no-op on the already-tracked data/ dir, so enforce 0700 here: the log
+            # records commands the assistant ran and must not be readable by other users.
             data.chmod(0o700)
         except OSError:
             pass

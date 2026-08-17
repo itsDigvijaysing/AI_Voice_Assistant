@@ -38,9 +38,8 @@ _VOICES: dict[str, str] = {
     "F5": "female",
 }
 
-# Kokoro (fallback engine) voice ids look like ``am_michael`` / ``bf_emma`` — a 2-letter lang+gender
-# prefix, an underscore, then a name. Accept that SHAPE so a real Kokoro id passes while garbage is
-# rejected up front (the engine bridge is the final validator, but this stops obvious typos).
+# Kokoro (fallback engine) ids look like ``am_michael`` — match that shape so real ids pass and typos
+# are rejected up front. The engine bridge is still the final validator.
 _KOKORO_RE = re.compile(r"[a-z]{2}_[a-z]+")
 
 
