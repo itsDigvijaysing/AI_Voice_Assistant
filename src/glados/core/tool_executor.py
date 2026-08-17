@@ -201,12 +201,8 @@ class ToolExecutor:
                 ):
                     args = args["arguments"]
 
-                # --- AI_Linux: confirm-before-execute safety gate ---
-                # Always consult confirm_tool_call: it self-checks requires_confirmation and
-                # returns True for non-gated tools, so a non-gated tool is unaffected — but the
-                # autonomy hard-floor and deny-by-default MUST NOT be short-circuited behind
-                # requires_confirmation (which GLADOS_CONFIRM_TOOLS can empty/narrow). See
-                # tool_safety.confirm_tool_call: the autonomy hard-floor is checked first.
+                # ALWAYS call confirm_tool_call: it self-checks requires_confirmation, and the autonomy
+                # hard-floor must never sit behind it (GLADOS_CONFIRM_TOOLS can empty/narrow that check).
                 if not confirm_tool_call(tool, args, autonomy_mode=autonomy_mode):
                     rejection = (
                         f"error: tool '{tool}' is blocked by the safety gate "
@@ -265,9 +261,8 @@ class ToolExecutor:
                     continue
 
                 if tool in all_tools:
-                    # Guard the tool's output queue: any error/timeout message WE enqueue and the
-                    # tool's OWN result funnel through here, so a timed-out-then-finished built-in
-                    # can't leave a duplicate tool answer for this id.
+                    # Both our timeout message and the tool's own result funnel through here, so a
+                    # timed-out-then-finished built-in can't leave a duplicate answer for this id.
                     guarded_queue = _SingleAnswerQueue(llm_queue, tool_call_id)
                     try:
                         tool_instance = tool_classes.get(tool)(
@@ -281,10 +276,8 @@ class ToolExecutor:
                             detail=str(e), args=args,
                         )
                         continue
-                    # Own DAEMON thread, not a ThreadPoolExecutor: the pool registers workers with
-                    # concurrent.futures' atexit hook, which joins them with NO timeout — one hung
-                    # tool would then block interpreter exit forever (a fresh pool per call also
-                    # leaked a thread per timeout). A daemon thread is genuinely abandonable.
+                    # Daemon thread, not a pool: concurrent.futures' atexit hook joins workers with
+                    # NO timeout, so one hung tool would block interpreter exit forever.
                     tool_error_box: list[Exception | None] = [None]
 
                     # Bind by default-arg: an ABANDONED worker must not see these rebound by the

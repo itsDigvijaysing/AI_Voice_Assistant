@@ -59,11 +59,8 @@ class SoundDeviceAudioIO:
         self._pending_audio: NDArray[np.float32] | None = None
         self._pending_sample_rate: int = self.SAMPLE_RATE
 
-        # AI_Linux: some Linux audio backends (notably a conda PortAudio that only sees raw
-        # ALSA hw: devices while PipeWire owns the card) cannot open the pipeline's 16 kHz
-        # capture / 24 kHz TTS rates, and the default *output* device may be HDMI rather than
-        # the speaker. Resolve a usable device + hardware-supported native rate once; when the
-        # native rate differs from the pipeline rate we resample with soxr.
+        # conda's raw-ALSA PortAudio often can't open the pipeline's 16k/24k rates, and the default
+        # output may be HDMI. Resolve a usable device + native rate once, resampling via soxr.
         self._in_device, self._out_device, self._capture_rate, self._playback_rate = self._resolve_audio_device()
         # Output rates already known-good (probed lazily in measure_percentage_spoken); seed the resolved one.
         self._out_rate_ok: dict[int, bool] = {self._playback_rate: True}
@@ -146,9 +143,8 @@ class SoundDeviceAudioIO:
         if not _ok(sd.check_input_settings, device, self.SAMPLE_RATE, 1):
             capture_rate = next((r for r in (48000, 44100) if _ok(sd.check_input_settings, device, r, 1)), 48000)
 
-        # output: pick a CONCRETE audible device. Never leave it on the system default, which on this
-        # hardware is HDMI (no sound) — the real "no voice" cause. Prefer the same card (the USB headset
-        # does both in+out), then any non-HDMI output, probing rates it actually supports (e.g. 44.1 kHz).
+        # Pick a CONCRETE audible output: the system default is HDMI here, the real "no voice" cause.
+        # Prefer the same card, then any non-HDMI output, probing rates it actually supports.
         out_device, playback_rate = self._pick_output(device, tts_rate)
 
         needs_resample = capture_rate != self.SAMPLE_RATE or playback_rate not in (tts_rate,)
@@ -368,10 +364,8 @@ class SoundDeviceAudioIO:
                 self._is_playing = False
             return False, -1  # sentinel: nothing played (caller must not record the reply as spoken)
 
-        # AI_Linux: play at the TTS rate directly (SuperTonic 44.1 kHz, Kokoro 24 kHz) whenever the
-        # output device supports it — the common case. Only resample when the device genuinely can't
-        # open that rate (e.g. a raw-ALSA hw device capped at 48 kHz). Keep the original `audio_data`
-        # reference for the identity-checked teardown below.
+        # Play at the TTS rate directly when the device supports it; resample only when it genuinely
+        # can't. Keep the original audio_data reference for the identity-checked teardown below.
         play_data = audio_data
         stream_rate = sample_rate
         if not self._output_supports(sample_rate) and _HAVE_SOXR:

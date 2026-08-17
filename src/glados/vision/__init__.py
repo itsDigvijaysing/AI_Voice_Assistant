@@ -1,9 +1,7 @@
 """Vision processing components."""
 
-# NOTE (AI_Linux vendoring): FastVLM and VisionProcessor pull in OpenCV (cv2).
-# They are imported lazily (PEP 562) so the package and core.engine load without
-# opencv when vision is disabled (the v1 default). cv2 is only needed at runtime
-# if vision is actually enabled in config. Lightweight, cv2-free symbols stay eager.
+# FastVLM and VisionProcessor pull in cv2, so they are imported lazily (PEP 562) — the package and
+# core.engine load without opencv when vision is disabled. Lightweight symbols stay eager.
 from .vision_config import VisionConfig
 from .vision_request import VisionRequest
 from .vision_state import VisionState
