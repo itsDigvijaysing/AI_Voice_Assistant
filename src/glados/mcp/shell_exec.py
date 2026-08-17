@@ -66,18 +66,14 @@ def _is_root_target(target: str) -> bool:
 def _destructive_reason(command: str) -> str | None:
     """Return a reason string if the command matches a catastrophic pattern, else None."""
     c = " ".join(command.split())  # normalize whitespace
-    # Also scan a quote-stripped copy: quoting a device path — dd of="/dev/sda", > "/dev/sda",
-    # mkfs '/dev/sda', tee "/dev/sda" — otherwise slips past the device-write patterns, which anchor
-    # on an *unquoted* /dev/. The rm/find logic already strips quotes; this brings _DENY to parity.
-    # (The /dev/ patterns only match raw disks like sd/nvme/mmcblk, never /dev/null|zero, so no new
-    # false positives on benign redirects.)
+    # Also scan a quote-stripped copy: a quoted device path (dd of="/dev/sda") slips past the _DENY
+    # patterns, which anchor on an unquoted /dev/. Raw disks only, so no new false positives.
     c_unquoted = c.replace('"', " ").replace("'", " ")
     for pattern, reason in _DENY:
         if pattern.search(c) or pattern.search(c_unquoted):
             return reason
-    # rm with recursive+force flags AND a top-level target (/, ~, $HOME, /home, the home dir, ~user) — but
-    # NOT a subfolder like ~/Downloads (those stay allowed). Every rm in a chained command is checked, and
-    # long-form flags (--recursive/--force) are normalized first so they can't slip past the short-flag scan.
+    # rm -rf of a top-level target (/, ~, $HOME, /home, ~user) — NOT a subfolder like ~/Downloads. Every
+    # rm in a chain is checked; long flags (--recursive/--force) are normalized to short ones first.
     home = re.escape(_HOME)
     bound = r"(?:\s|$|\))"  # token ends at whitespace, end, or a subshell ')' — so '(rm -rf /)' is caught
     roots = (
@@ -97,9 +93,8 @@ def _destructive_reason(command: str) -> str | None:
         scan = rm_args.replace('"', " ").replace("'", " ")  # strip quotes so the boundary regex still matches
         if re.search(roots, scan) or re.search(globs, scan):
             return "recursive force-delete of a top-level path"
-        # bare *, ., ./ wipe the current dir — the shell's cwd is the user's home (a root). Block UNLESS a
-        # `cd` into a NON-root subfolder precedes this rm (then it's a scoped clear, allowed). A bare `cd`
-        # or `cd <root>` does NOT scope it.
+        # bare *, ., ./ wipe the cwd, which is the user's home (a root). Allowed only when a `cd` into a
+        # NON-root subfolder precedes this rm; a bare `cd` or `cd <root>` does not scope it.
         if re.search(rf"(?:^|\s)(?:\*|\.|\./){bound}", scan):
             cds = re.findall(r"\bcd\b\s*([^\s;&|]*)", c[: m.start()])  # governing cd = the last one
             if not cds or _is_root_target(cds[-1]):
@@ -107,9 +102,8 @@ def _destructive_reason(command: str) -> str | None:
     return None
 
 
-# Resource-cap properties. Kept in ONE place so the availability probe validates exactly the props
-# run_shell later uses — otherwise a systemd build that accepts scopes but rejects a property would
-# pass the probe yet fail every capped command at spawn. RuntimeMaxSec is added per-call (dynamic).
+# Kept in ONE place so the probe validates exactly the props run_shell uses — a systemd that accepts
+# scopes but rejects a property would otherwise pass the probe yet fail every command at spawn.
 _SCOPE_CAP_PROPS: tuple[str, ...] = ("-p", "MemoryMax=2G", "-p", "TasksMax=512")
 
 _SD_RUN_OK: bool | None = None  # lazily-probed: can we open systemd --user transient scopes with our caps?
