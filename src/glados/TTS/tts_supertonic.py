@@ -1,7 +1,7 @@
 """SuperTonic-3 TTS adapter (AI_Linux addition).
 
 SuperTonic-3 (https://github.com/supertone-inc/supertonic) is a lightning-fast,
-on-device, multilingual TTS that runs natively via ONNX Runtime — no PyTorch — which
+on-device, multilingual TTS that runs natively via ONNX Runtime (no PyTorch), which
 fits this assistant's CPU/ONNX budget (the GPU is reserved for the LLM). It outputs
 44.1 kHz float32 audio and ships a fixed set of speakers:
 

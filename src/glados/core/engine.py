@@ -133,7 +133,7 @@ class GladosConfig(BaseModel):
     def _resolve_api_key_from_env(self) -> "GladosConfig":
         """Fall back to an API key from the environment when api_key is not set.
 
-        Checks GLADOS_API_KEY, then MINIMAX_API_KEY — so an (optional, opt-in) cloud
+        Checks GLADOS_API_KEY, then MINIMAX_API_KEY, so an (optional, opt-in) cloud
         brain's key is supplied via env and never committed in a config file.
         """
         if self.api_key is None:
@@ -148,7 +148,7 @@ class GladosConfig(BaseModel):
     def _apply_env_overrides(self) -> "GladosConfig":
         """Quick runtime toggles via env (used by the ai-linux launcher).
 
-        GLADOS_INTERRUPTIBLE forces barge-in on/off without editing the config —
+        GLADOS_INTERRUPTIBLE forces barge-in on/off without editing the config,
         e.g. the launcher's --barge-in sets it to 1 (use with headphones or echo
         cancellation; on bare speakers leave the half-duplex default).
         """
@@ -387,7 +387,7 @@ class Glados:
         self.currently_speaking_event = threading.Event()  # Indicates if the assistant is currently speaking
         self.shutdown_event = threading.Event()  # Event to signal shutdown of all threads
 
-        # All component threads are daemon=True, so these bounds only keep the normal case snappy —
+        # All component threads are daemon=True, so these bounds only keep the normal case snappy,
         # the _HARD_EXIT_TIMEOUT_S watchdog in _graceful_shutdown is the real backstop.
         self._shutdown_orchestrator = ShutdownOrchestrator(
             shutdown_event=self.shutdown_event,
@@ -1051,7 +1051,7 @@ class Glados:
         def _watchdog() -> None:
             time.sleep(self._HARD_EXIT_TIMEOUT_S)
             logger.warning(
-                "Shutdown watchdog: graceful shutdown exceeded {}s — force-exiting.",
+                "Shutdown watchdog: graceful shutdown exceeded {}s, force-exiting.",
                 self._HARD_EXIT_TIMEOUT_S,
             )
             os._exit(1)
@@ -1086,7 +1086,7 @@ class Glados:
             self.subagent_manager.shutdown(timeout=2.0)
 
         # Stop task manager. wait=True with no timeout falls through to an unbounded
-        # ThreadPoolExecutor.shutdown(wait=True) — a stuck task would hang the process forever.
+        # ThreadPoolExecutor.shutdown(wait=True): a stuck task would hang the process forever.
         if self.autonomy_tasks:
             logger.debug("Shutting down task manager...")
             self.autonomy_tasks.shutdown(wait=True, timeout=2.0)
@@ -1140,7 +1140,7 @@ class Glados:
     def set_voice(self, voice: str) -> bool:
         """Switch the assistant's live TTS voice (e.g. SuperTonic ``M1``/``F3``).
 
-        Applied to the running synthesizer so the very next reply uses it — no restart.
+        Applied to the running synthesizer so the very next reply uses it; no restart needed.
         Reassigning the voice style is a single attribute swap; if it lands mid-utterance
         that utterance simply finishes in the previous voice. Returns True on success.
         Driven by ``mcp.voice.set_voice`` via the overlay bridge's ``voice.json`` channel.

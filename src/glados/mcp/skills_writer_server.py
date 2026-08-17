@@ -1,7 +1,7 @@
-"""Skill writer exposed over MCP (AI_Linux — self-improving skills).
+"""Skill writer exposed over MCP (AI_Linux, self-improving skills).
 
 Lets the assistant LEARN: save_skill writes a SKILL-*.md draft under skills/learned/ so the retriever
-picks it up next turn. It writes a MARKDOWN FILE ONLY and never runs anything — the commands it stores
+picks it up next turn. It writes a MARKDOWN FILE ONLY and never runs anything, the commands it stores
 stay inert until the model later calls the gated mcp.shell.run_command. Ungated is correct (same as
 voice_server writing voice.json); the safety gate still governs every execution. Writing logic lives in
 core/skills_index.write_skill (shared with the engine's /learn command).
@@ -27,7 +27,7 @@ mcp = FastMCP("skills_writer")
 def save_skill(name: str, trigger: str, commands: list[str], notes: str = "") -> str:
     """Save a new skill (a how-to for a desktop task) so you can reuse it later.
 
-    Writes a markdown draft only — it NEVER runs anything. The stored commands execute later only when
+    Writes a markdown draft only, it NEVER runs anything. The stored commands execute later only when
     you call mcp.shell.run_command (which is safety-gated). Use this when the user teaches you how to do
     something, or after you find a command that works.
 

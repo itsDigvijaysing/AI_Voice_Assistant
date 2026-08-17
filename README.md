@@ -12,19 +12,19 @@ Tuned to run comfortably on a modest laptop GPU (as little as ~6 GB VRAM) by kee
 ---
 
 ## Features
-- **Wake-word voice loop** with VAD (say "computer …"; **talk-over barge-in is on by default** via PipeWire echo-cancel — see [Barge-in](#barge-in-interrupting-the-assistant)).
+- **Wake-word voice loop** with VAD (say "computer …"; **talk-over barge-in is on by default** via PipeWire echo-cancel, see [Barge-in](#barge-in-interrupting-the-assistant)).
 - **Voice *and* text** input (`input_mode: both`).
-- **Local brain** — `qwen3:4b` via [Ollama](https://ollama.com) (GPU); switch to the lighter `qwen3:1.7b` via the Settings panel / `GLADOS_LLM_MODEL`.
-- **CPU speech** — Parakeet ASR + SuperTonic TTS (Kokoro fallback), all ONNX, so the GPU stays free for the LLM.
-- **Acts on your desktop** — **13 native typed tools** (`mcp.skills_actions.*`: brightness, volume, lock,
+- **Local brain**: `qwen3:4b` via [Ollama](https://ollama.com) (GPU); switch to the lighter `qwen3:1.7b` via the Settings panel / `GLADOS_LLM_MODEL`.
+- **CPU speech**: Parakeet ASR + SuperTonic TTS (Kokoro fallback), all ONNX, so the GPU stays free for the LLM.
+- **Acts on your desktop**: **13 native typed tools** (`mcp.skills_actions.*`: brightness, volume, lock,
  screenshot, open app/link/folder, web/YouTube search, media, night light, do-not-disturb, settings,
  terminal, clipboard) the model calls directly, plus a general `shell` fallback. Reasoning is **on** so the
  small model reliably picks the right tool (verified 22/22 in a live test).
-- **Todoist tasks** — "what's on my list today" / "add a task to go for a walk" via `mcp.todoist.*`
+- **Todoist tasks**: "what's on my list today" / "add a task to go for a walk" via `mcp.todoist.*`
  (needs a `TODOIST_API_TOKEN` in the environment).
-- **Safety gate** — irreversible actions (shell, desktop tools) are denied unless you explicitly arm them;
+- **Safety gate**: irreversible actions (shell, desktop tools) are denied unless you explicitly arm them;
  a catastrophic-command denylist and kernel-enforced resource caps (`systemd-run`) back it up.
-- **On-screen overlay** (GNOME Shell extension) — top-right orb + transcript that tracks state, with
+- **On-screen overlay** (GNOME Shell extension): top-right orb + transcript that tracks state, with
  listening-mode controls (always / wake / click) that can hand the mic back to other apps, plus a
  **Settings window** (model, voice, listening, actions, barge-in) reachable from Extension Manager.
 
@@ -44,7 +44,7 @@ flowchart LR
   mcp -->|"result"| brain
 ```
 
-The brain (LLM) is the only component on the GPU; ASR, VAD, and TTS run on the CPU as ONNX — that split
+The brain (LLM) is the only component on the GPU; ASR, VAD, and TTS run on the CPU as ONNX. That split
 is what makes the assistant fit in 6 GB of VRAM.
 
 ### A conversational turn
@@ -82,7 +82,7 @@ git clone https://github.com/itsDigvijaysing/AI_Linux_Assistant.git
 cd AI_Linux_Assistant
 ```
 
-One script does everything — install and run:
+One script installs and runs it:
 
 ```bash
 ./ai-linux setup   # one-time: conda env, deps, Ollama + qwen3:4b, ONNX weights, GNOME launcher + icon
@@ -104,7 +104,7 @@ Then, day to day:
 ```
 
 Or click **AI Linux Assistant** in the GNOME app grid (installed by `setup`, with a custom glass-orb icon).
-`setup` is idempotent — safe to re-run, and it records every system change to
+`setup` is idempotent, safe to re-run, and it records every system change to
 `~/.local/state/ai-linux/install-manifest.tsv` so `./ai-linux uninstall` cleanly reverts exactly those changes.
 Speech weights download on first `setup` only if not already present.
 
@@ -118,7 +118,7 @@ All settings live in [`configs/ai_linux_config.yaml`](configs/ai_linux_config.ya
 |---|---|
 | `llm_model` / `completion_url` | brain model + endpoint (default local Ollama `qwen3:4b`) |
 | `voice` | TTS voice: `supertonic:M1` (default; male `M1`/`M3`–`M5`, female `F1`–`F5`) or a Kokoro voice e.g. `am_michael` |
-| `asr_engine` | `ctc` (faster) or `tdt` (more accurate) — both CPU |
+| `asr_engine` | `ctc` (faster) or `tdt` (more accurate), both CPU |
 | `input_mode` | `audio`, `text`, or `both` |
 | `interruptible` | barge-in (interrupt the assistant by speaking) |
 | `wake_word` | a trigger phrase, or `null` for always-listening |
@@ -127,26 +127,26 @@ All settings live in [`configs/ai_linux_config.yaml`](configs/ai_linux_config.ya
 
 ### Local-first by design
 
-The brain is `qwen3:4b` via [Ollama](https://ollama.com), running on your GPU — nothing leaves the machine.
+The brain is `qwen3:4b` via [Ollama](https://ollama.com), running on your GPU. Nothing leaves the machine.
 Switch to the lighter `qwen3:1.7b` any time via the Settings panel or `GLADOS_LLM_MODEL`. Speech, tools, and
 the safety gate are all local and identical regardless of which local model you pick.
 
 If you ever want a stronger/cloud model for harder tasks, the engine can point at any OpenAI-compatible
-endpoint — set `llm_model` / `completion_url` / `api_key` in the config (key read from env, never stored).
+endpoint. Set `llm_model` / `completion_url` / `api_key` in the config (key read from env, never stored).
 This is a manual, opt-in edit; there's no cloud brain wired in or enabled by default.
 
 ---
 
 ## Tools (MCP servers)
 
-Tools are exposed to the model as `mcp.<server>.<tool>`. The menu is deliberately **lean** — a short, stable
+Tools are exposed to the model as `mcp.<server>.<tool>`. The menu is deliberately **lean**: a short, stable
 set of typed tools is what makes a small model reliably pick the right one (verified). **6 servers are active:**
 
 | Server | Tools | Purpose | Gated |
 |---|---|---|:---:|
 | `system_info` | `system_overview`, `battery_status`, `network_status` | read-only system/battery/network status | |
 | `time_info` | `now_iso` | current time | |
-| **`skills_actions`** | `set_screen_brightness`, `set_volume`, `lock_screen`, `take_screenshot`, `open_app_or_link`, `search_web`, `control_media`, `toggle_night_light`, `set_do_not_disturb`, `open_settings`, `open_terminal`, `open_file_manager`, `clipboard` | the **13 typed desktop actions** — the model's main capability surface | yes |
+| **`skills_actions`** | `set_screen_brightness`, `set_volume`, `lock_screen`, `take_screenshot`, `open_app_or_link`, `search_web`, `control_media`, `toggle_night_light`, `set_do_not_disturb`, `open_settings`, `open_terminal`, `open_file_manager`, `clipboard` | the **13 typed desktop actions**, the model's main capability surface | yes |
 | **`shell`** | `run_command` | general local command fallback (as you, never sudo) | yes |
 | `voice` | `set_voice` | change the assistant's own TTS voice live | |
 | `todoist` | `list_tasks`, `create_task` | check/add Todoist tasks (needs `TODOIST_API_TOKEN` in env) | |
@@ -156,7 +156,7 @@ executor as `shell` (`mcp/shell_exec.py::run_shell`), so nothing bypasses the sa
 tools add `go_to_sleep` (ends the wake session, never the OS). Four more servers ship but are **disabled by
 default** to keep the menu small (uncomment in the config to enable): `memory`, `skills` (keyword/hybrid
 retrieval over `skills/`), `skills_writer` (`/learn` drafts), and `computer_use` (Wayland click/type GUI
-automation — its window-control service is vendored into the overlay extension, dormant until enabled).
+automation; its window-control service is vendored into the overlay extension, dormant until enabled).
 
 ### Safety gate
 
@@ -174,20 +174,20 @@ flowchart TD
 ```
 
 Interactive launches (`./ai-linux`, the GNOME app icon, `./ai-linux tui`) **arm actions by default** so the
-assistant can actually act — mute the device, open apps, run commands. Disable with `./ai-linux --no-actions`.
+assistant can actually act: mute the device, open apps, run commands. Disable with `./ai-linux --no-actions`.
 The autonomous loop can **never** run gated actions, regardless of settings (hard floor).
 
 ### No superuser
 
-The **running assistant never uses `sudo`/root** — every command runs as your user (verified: there is no
+The **running assistant never uses `sudo`/root**: every command runs as your user (verified: there is no
 `sudo` call anywhere in the runtime). The **only** place sudo is used is `./ai-linux setup`, which does a
 one-time `apt` install of a few user-level desktop tools (`brightnessctl`, `playerctl`, `wl-clipboard`,
-`ydotool`) so brightness / media / clipboard / input work — skipped automatically if they're already present.
+`ydotool`) so brightness / media / clipboard / input work (skipped automatically if they're already present).
 (Screenshots go through `computer-use-linux`'s sanctioned screen-capture portal; `gnome-screenshot` is **not**
-installed — it adds a stray app-grid icon and is broken on GNOME Wayland.) Setup also scopes `ydotool`'s input
+installed: it adds a stray app-grid icon and is broken on GNOME Wayland.) Setup also scopes `ydotool`'s input
 access via a **udev rule** (per-session ACL on `/dev/uinput`), not the broad `input` group, so nothing gains
 system-wide keystroke read. Every system change setup makes is recorded so **`./ai-linux uninstall`** reverts
-exactly those deltas — installs are fully and transparently reversible.
+exactly those deltas. Installs are fully and transparently reversible.
 
 A destructive-command **denylist** (`mcp/shell_exec.py::_destructive_reason`, the single execution chokepoint
 shared by every gated tool) refuses clearly catastrophic commands (`rm -rf ~`/`$HOME`/globs, `dd of=/dev/…`,
@@ -200,18 +200,18 @@ the full threat model, guarantees, and how to run disarmed (`./ai-linux --no-act
 
 ## Barge-in (interrupting the assistant)
 
-**On by default:** `./ai-linux` runs **full-duplex** so you can talk over the assistant on open speakers —
-your voice cuts it off mid-sentence (TTS is cancelled the instant VAD fires). It works because the launcher
+**On by default:** `./ai-linux` runs **full-duplex** so you can talk over the assistant on open speakers.
+Your voice cuts it off mid-sentence (TTS is cancelled the instant VAD fires). It works because the launcher
 routes audio through **PipeWire's WebRTC echo-cancel** (`module-echo-cancel`): capture goes through `pw-record`
 and TTS plays through `pw-play` to an echo-cancelled sink, so the open mic never transcribes the assistant's
-own voice. No system packages and **no `sudo`** — the AEC module is loaded as your user for the session and
+own voice. No system packages and **no `sudo`**: the AEC module is loaded as your user for the session and
 unloaded on exit (fully reversible).
 
 Why a separate PipeWire backend (`audio_io/pipewire_io.py`) instead of the in-process path: conda's PortAudio
 only enumerates raw `hw:` ALSA cards and can't open PipeWire's `pipewire`/`pulse` PCMs, so it can't be routed
 through `module-echo-cancel` directly. The PipeWire backend sidesteps that.
 
-`./ai-linux --half-duplex` turns barge-in **off** — the mic is ignored while the assistant speaks (the echo
+`./ai-linux --half-duplex` turns barge-in **off**: the mic is ignored while the assistant speaks (the echo
 guard) and re-opens after a short hangover. Use it if AEC misbehaves on your hardware, or just use headphones
 (a headset gives clean input with no echo to cancel).
 
@@ -266,4 +266,4 @@ weights). Remaining user steps: the first live **voice run** (mic + GPU) and **o
 extension.
 
 ## License
-MIT — see [LICENSE](LICENSE). Built with thanks to the open-source community.
+MIT. See [LICENSE](LICENSE). Built with thanks to the open-source community.

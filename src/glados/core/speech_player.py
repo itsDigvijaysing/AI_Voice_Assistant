@@ -117,7 +117,7 @@ class SpeechPlayer:
 
                     if percentage_played < 0:
                         # Audio was dropped (never played: player binary missing, write/stream-open
-                        # failure). Do NOT record the reply as spoken — nothing reached the user.
+                        # failure). Do NOT record the reply as spoken; nothing reached the user.
                         logger.warning(f"AudioPlayer: audio dropped, not played: '{audio_msg.text}'")
                     elif interrupted:
                         clipped_text = self.clip_interrupted_sentence(audio_msg.text, percentage_played)

@@ -2,7 +2,7 @@
 name: battery-status
 trigger: user asks about the battery, power level, charge, how much battery is left, or whether it is charging
 tools: [mcp.shell.run_command]
-requires: upower — present on Ubuntu 26.04; user-level, no sudo
+requires: upower, present on Ubuntu 26.04; user-level, no sudo
 ---
 
 Check battery via mcp.shell.run_command (no sudo), then tell the user plainly:

@@ -1,6 +1,6 @@
 ---
 name: system-status
-trigger: user asks how the computer is doing — cpu, memory, temperature, uptime
+trigger: user asks how the computer is doing, cpu, memory, temperature, uptime
 tools: [mcp.system_info.*, mcp.time_info.*]
 ---
 

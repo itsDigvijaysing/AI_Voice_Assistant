@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ai-linux-screenshot — save a screenshot to ~/Pictures via computer-use-linux's screen-capture portal.
+"""ai-linux-screenshot, save a screenshot to ~/Pictures via computer-use-linux's screen-capture portal.
 
 GNOME/Wayland blocks apps from grabbing the screen directly (anti-spyware). The sanctioned path is the XDG
 screen-capture portal, which computer-use-linux already holds a pre-authorized session for. We drive its MCP
@@ -59,7 +59,7 @@ def main() -> int:
 
     binary = _resolve_binary()
     if not binary:
-        sys.stderr.write("computer-use-linux not found — run ./ai-linux setup\n")
+        sys.stderr.write("computer-use-linux not found, run ./ai-linux setup\n")
         return 1
 
     # Minimal MCP (JSON-RPC over stdio) handshake + a single screenshot tool call.

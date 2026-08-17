@@ -1,7 +1,7 @@
 """Shared shell execution + destructive-command denylist (AI_Linux).
 
 Single source of truth used by BOTH ``mcp.shell.run_command`` and the typed
-``mcp.skills_actions.*`` tools, so every command — however it was produced — runs through the
+``mcp.skills_actions.*`` tools, so every command, however it was produced, runs through the
 same catastrophic-command denylist and the same subprocess wrapper. This module has NO FastMCP /
 logging side effects so it is safe to import from any server subprocess.
 
@@ -30,7 +30,7 @@ _DENY: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\btruncate\b[^|;&\n]*\s/dev/(sd|nvme|mmcblk|vd|hd|disk)", re.I), "truncate a device"),
     (re.compile(r">\s*/dev/(sd|nvme|mmcblk|vd|hd)", re.I), "redirect to a raw disk device"),
     (re.compile(r"\btee\b[^|;&\n]*\s/dev/(sd|nvme|mmcblk|vd|hd)", re.I), "tee to a raw disk device"),
-    # recursive chmod/chown of / — flag BEFORE or AFTER the mode/owner
+    # recursive chmod/chown of /: flag BEFORE or AFTER the mode/owner
     (re.compile(r"\bchmod\b\s+-\S*[Rr]\S*\s+(777|000)\s+/(\s|$)"), "recursive chmod of /"),
     (re.compile(r"\bchmod\b\s+(777|000)\s+-\S*[Rr]\S*\s+/(\s|$)"), "recursive chmod of /"),
     (re.compile(r"\bchown\b\s+-\S*[Rr]\S*\s+\S+\s+/(\s|$)"), "recursive chown of /"),
@@ -72,15 +72,15 @@ def _destructive_reason(command: str) -> str | None:
     for pattern, reason in _DENY:
         if pattern.search(c) or pattern.search(c_unquoted):
             return reason
-    # rm -rf of a top-level target (/, ~, $HOME, /home, ~user) — NOT a subfolder like ~/Downloads. Every
+    # rm -rf of a top-level target (/, ~, $HOME, /home, ~user), but NOT a subfolder like ~/Downloads. Every
     # rm in a chain is checked; long flags (--recursive/--force) are normalized to short ones first.
     home = re.escape(_HOME)
-    bound = r"(?:\s|$|\))"  # token ends at whitespace, end, or a subshell ')' — so '(rm -rf /)' is caught
+    bound = r"(?:\s|$|\))"  # token ends at whitespace, end, or a subshell ')', so '(rm -rf /)' is caught
     roots = (
         rf"(?:^|\s)(?:/|~/|~\w+|~|\$HOME/|\$HOME|\$\{{HOME\}}/|\$\{{HOME\}}|"
         rf"/home/|/home|{home}/|{home}){bound}"
     )
-    # top-level glob wipes: <root>/* and the dotfile form <root>/.* — for every way of writing the root
+    # top-level glob wipes: <root>/* and the dotfile form <root>/.*, for every way of writing the root
     glob_roots = rf"(?:/|~/|\$HOME/|\$\{{HOME\}}/|/home/|{home}/)"
     globs = rf"(?:^|\s){glob_roots}(?:\*|\.\*){bound}"
     for m in re.finditer(r"\brm\b", c):
@@ -102,7 +102,7 @@ def _destructive_reason(command: str) -> str | None:
     return None
 
 
-# Kept in ONE place so the probe validates exactly the props run_shell uses — a systemd that accepts
+# Kept in ONE place so the probe validates exactly the props run_shell uses, a systemd that accepts
 # scopes but rejects a property would otherwise pass the probe yet fail every command at spawn.
 _SCOPE_CAP_PROPS: tuple[str, ...] = ("-p", "MemoryMax=2G", "-p", "TasksMax=512")
 
@@ -128,10 +128,10 @@ def run_shell(command: str, timeout: float = _COMMAND_TIMEOUT, resource_caps: bo
     """Run a shell command (gated by the denylist) and return a JSON-able result dict.
 
     With resource_caps (default) the command runs in a transient ``systemd-run --user --scope``
-    with TasksMax/MemoryMax/RuntimeMaxSec — kernel-enforced containment of fork bombs and runaway
+    with TasksMax/MemoryMax/RuntimeMaxSec, kernel-enforced containment of fork bombs and runaway
     memory that the regex denylist can't pattern-match (see SECURITY.md: a full OS sandbox is
     non-load-bearing here, resource caps are not). Falls back to a plain subprocess when scopes
-    are unavailable. Pass resource_caps=False for detached GUI launches — the launched app would
+    are unavailable. Pass resource_caps=False for detached GUI launches, the launched app would
     otherwise stay in the capped scope for its whole lifetime.
 
     Returns {returncode, stdout, stderr} on success, or {error: ...} for empty/refused/timeout/spawn

@@ -101,7 +101,7 @@ class SoundDeviceAudioIO:
         """Pick the audio device(s) + a hardware-supported native rate.
 
         Fast path: if the default devices already open the pipeline rates (16 kHz capture /
-        24 kHz playback — the normal case on PulseAudio/PipeWire-visible setups), use them
+        24 kHz playback, the normal case on PulseAudio/PipeWire-visible setups), use them
         unchanged (device=None, no resampling).
 
         Fallback: honor ``GLADOS_AUDIO_DEVICE`` (index or name substring), else use the
@@ -184,7 +184,7 @@ class SoundDeviceAudioIO:
             return None
 
         # 1) same card if it has output (a USB headset does both). Trust max_output_channels even if the
-        #    probe momentarily races PipeWire — the playback stream open already retries with backoff.
+        #    probe momentarily races PipeWire; the playback stream open already retries with backoff.
         if isinstance(in_device, int) and 0 <= in_device < len(devs) and devs[in_device]["max_output_channels"] > 0:
             return in_device, (first_rate(in_device) or int(devs[in_device]["default_samplerate"]))
         # 2) any other output-capable device, non-HDMI first (HDMI default is the usual silent trap)

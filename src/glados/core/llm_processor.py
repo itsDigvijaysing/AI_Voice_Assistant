@@ -112,7 +112,7 @@ class LanguageModelProcessor:
         """Insert a synthetic tool result for any assistant tool_call left unanswered.
 
         A barge-in can abort a turn after the assistant's ``tool_calls`` message is stored but before the
-        tool runs, leaving a dangling call with no matching ``tool`` reply — which strict OpenAI-compatible
+        tool runs, leaving a dangling call with no matching ``tool`` reply, which strict OpenAI-compatible
         endpoints reject and which can confuse the next turn. This is a PURE message-list transform run right
         before the request: it never writes the conversation store and never triggers generation.
         """
@@ -388,7 +388,7 @@ class LanguageModelProcessor:
     def _flush_streamed_sentences(self, sentence_buffer: list[str]) -> list[str]:
         """Send every COMPLETE sentence in the buffer to TTS; return the unfinished tail.
 
-        The LLM stream is chunked unpredictably — a word, a clause, a whole sentence, or a lone
+        The LLM stream is chunked unpredictably: a word, a clause, a whole sentence, or a lone
         punctuation mark can each arrive as one chunk. The old check only flushed when an entire
         chunk *was* punctuation, so for token-by-token backends the whole reply buffered until the
         stream ended (no streaming TTS). Instead, scan the accumulated text and emit each finished
@@ -442,7 +442,7 @@ class LanguageModelProcessor:
         sentence = sentence.replace("\n\n", ". ").replace("\n", ". ").replace("  ", " ").replace(":", " ")
 
         # Robustness: a weak model can emit a tool call as TEXT ({"name":...,"arguments":{...}} or an mcp.* blob)
-        # instead of a real tool_call. Never speak raw JSON — drop the fragment (the reliable path is a real call).
+        # instead of a real tool_call. Never speak raw JSON, drop the fragment (the reliable path is a real call).
         low = sentence.lower()
         looks_toolish = (
             '"arguments"' in low
@@ -694,7 +694,7 @@ class LanguageModelProcessor:
             try:
                 llm_input = self.llm_input_queue.get(timeout=self.pause_time)
                 # always process a dequeued request (the old discard-on-clear-flag dropped replies);
-                # mark the turn active — listener clears it only on a real barge-in.
+                # mark the turn active; listener clears it only on a real barge-in.
                 self.processing_active_event.set()
 
                 inflight_guard = False
@@ -745,7 +745,7 @@ class LanguageModelProcessor:
                     self._conversation_store.append({"role": "system", "content": str(wake_note)})
 
                 # Barge-in resume: this fragment interrupted a turn that was never answered, so it
-                # is the rest of that thought — fold it in rather than stacking a competing turn.
+                # is the rest of that thought; fold it in rather than stacking a competing turn.
                 merged_into_previous = False
                 if llm_input.get("_continuation") and llm_message.get("role") == "user":
                     history = self._conversation_store.snapshot()
@@ -771,7 +771,7 @@ class LanguageModelProcessor:
 
                 allow_tools = bool(llm_input.get("_allow_tools", True))
                 # Skills are native function-calling tools, so there is NO per-turn retrieval, command
-                # injection or tool-narrowing — that misfired on ambient words. The tool set IS the menu.
+                # injection or tool-narrowing; that misfired on ambient words. The tool set IS the menu.
                 tools = self._build_tools(autonomy_mode) if allow_tools else []
                 tool_names = {
                     tool.get("function", {}).get("name", "")

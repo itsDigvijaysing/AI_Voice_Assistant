@@ -3,7 +3,7 @@
 Semantic fallback for skills_index: when keyword retrieval finds nothing (e.g. "make the screen darker"
 has no skill keyword), embed the query with a local Ollama model (nomic-embed-text, CPU-friendly) and
 match by cosine. Skill vectors are cached on disk and regenerated only when skills change. Any failure
-(model not pulled, Ollama down) raises so the caller falls back to keyword — retrieval never breaks.
+(model not pulled, Ollama down) raises so the caller falls back to keyword; retrieval never breaks.
 """
 
 from __future__ import annotations

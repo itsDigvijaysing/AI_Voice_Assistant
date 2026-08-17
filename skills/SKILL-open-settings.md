@@ -2,7 +2,7 @@
 name: open-system-settings
 trigger: user asks to open settings, system settings, preferences, control panel, or a specific panel like sound, display, wifi, network, bluetooth, power, or privacy settings
 tools: [mcp.shell.run_command]
-requires: gnome-control-center — present on Ubuntu 26.04; user-level, no sudo
+requires: gnome-control-center, present on Ubuntu 26.04; user-level, no sudo
 ---
 
 Open GNOME Settings (optionally a specific panel) via mcp.shell.run_command (no sudo):

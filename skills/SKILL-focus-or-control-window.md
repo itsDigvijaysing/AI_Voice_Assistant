@@ -10,4 +10,4 @@ link / file / folder from scratch, prefer the launch skill (it is simpler than G
 
 1. `mcp.computer_use.list_windows` / `list_apps` to find the target window.
 2. `activate_window` to focus / raise it; then `click`, `type_text`, `press_key`, or `scroll` to operate it.
-3. Each action passes the confirm-before-execute safety gate. If denied, stop and say so — don't retry silently.
+3. Each action passes the confirm-before-execute safety gate. If denied, stop and say so, don't retry silently.

@@ -1,6 +1,6 @@
 """Local shell/command executor exposed over MCP (AI_Linux, Phase 5).
 
-This is the assistant's "executor" for arbitrary system tasks — running a command
+This is the assistant's "executor" for arbitrary system tasks, running a command
 on the local machine. It is intentionally lean (a thin subprocess wrapper) rather
 than a heavyweight agent framework: the project goal is simple/regular tasks, not
 complex autonomous agent work. Common desktop actions have dedicated typed tools in

@@ -24,7 +24,7 @@ class _SingleAnswerQueue:
     for ``tool_call_id`` is forwarded.
 
     A built-in that TIMES OUT is abandoned (we can't kill the thread), but it may still finish later
-    and enqueue its own result — a SECOND ``tool`` message for the same id, which strict
+    and enqueue its own result, a SECOND ``tool`` message for the same id, which strict
     OpenAI-compatible endpoints reject and Ollama finds confusing. Routing both the tool's own put
     and the executor's error/timeout put through this guard drops that late duplicate. Everything
     that is not a duplicate ``tool`` answer passes straight through to the base queue unchanged.
@@ -112,7 +112,7 @@ class ToolExecutor:
         meta_extra: dict[str, Any] | None = None,
     ) -> None:
         """Report a refused/failed/timed-out tool call in ONE place: log, tool event, feedback record,
-        observability, and — always — a ``tool`` answer so the assistant's tool_call never dangles.
+        observability, and always a ``tool`` answer so the assistant's tool_call never dangles.
 
         ``detail=None`` skips the self-improvement record (a timeout is not a command outcome);
         ``event=None`` skips the UI tool event (paths that never had one).

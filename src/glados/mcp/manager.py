@@ -111,7 +111,7 @@ class MCPManager:
             self._loop.call_soon_threadsafe(self._shutdown_async.set)
         self._loop.call_soon_threadsafe(self._loop.stop)
         # Daemon thread and the process is exiting anyway, so this only needs to leave the engine's
-        # shutdown watchdog headroom — it is not a "wait for in-flight MCP calls" window.
+        # shutdown watchdog headroom; it is not a "wait for in-flight MCP calls" window.
         self._thread.join(timeout=2.0)
 
     def get_tool_definitions(self) -> list[dict[str, Any]]:
@@ -266,7 +266,7 @@ class MCPManager:
 
         - ``stdio``: ``stdio_client`` (yields a 2-tuple of read/write streams).
         - ``http``: ``streamable_http_client`` via ``_http_transport`` (yields a
-          3-tuple: read, write, and a ``get_session_id`` callable — the runner
+          3-tuple: read, write, and a ``get_session_id`` callable; the runner
           absorbs the extra value with ``*_``).
         - ``sse``: ``sse_client`` (yields a 2-tuple of read/write streams).
 
@@ -282,13 +282,13 @@ class MCPManager:
             if not config.command:
                 raise MCPError(f"MCP server '{config.name}' requires a command for stdio transport.")
             # The MCP SDK scrubs the child env and drops the display/session vars, breaking GUI launches
-            # and the portal. A non-None env merges, so add them back — XAUTHORITY too, for Xwayland.
+            # and the portal. A non-None env merges, so add them back. XAUTHORITY too, for Xwayland.
             _GUI_ENV = (
                 "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
                 "XDG_CURRENT_DESKTOP", "XAUTHORITY",
             )
             # Secrets a server reads from its own env (TODOIST_API_TOKEN) hit the same scrubbing, so
-            # pass them through explicitly. Never put a real secret in config.env — it is committed.
+            # pass them through explicitly. Never put a real secret in config.env; it is committed.
             _PASSTHROUGH_ENV = ("TODOIST_API_TOKEN",)
             env = {
                 **{k: os.environ[k] for k in (*_GUI_ENV, *_PASSTHROUGH_ENV) if k in os.environ},

@@ -1,10 +1,10 @@
-"""PipeWire audio backend with WebRTC echo cancellation (AI_Linux — real full-duplex barge-in).
+"""PipeWire audio backend with WebRTC echo cancellation (AI_Linux, real full-duplex barge-in).
 
 Why this exists: conda's PortAudio is ALSA-`hw:`-only and cannot see PipeWire virtual nodes, so it
 can't use PipeWire's WebRTC `module-echo-cancel`. Without echo cancellation, an open mic transcribes
 the assistant's own TTS, which is why the default (sounddevice) backend is half-duplex. This backend
-routes audio through PipeWire instead — capturing from an echo-cancelled source and playing to the
-echo-cancel sink (the AEC reference) — so the mic the engine hears has the assistant's voice removed.
+routes audio through PipeWire instead, capturing from an echo-cancelled source and playing to the
+echo-cancel sink (the AEC reference), so the mic the engine hears has the assistant's voice removed.
 That is the local equivalent of how LightSpeak/RealtimeVoiceChat get full-duplex (browser WebRTC AEC).
 
 Proven on this box: `libspa-aec-webrtc.so` present; `module-echo-cancel` creates `ai_aec_source`/
@@ -54,7 +54,7 @@ class PipeWireAudioIO:
         self._src = os.environ.get("GLADOS_AEC_SOURCE", "ai_aec_source")
         self._sink = os.environ.get("GLADOS_AEC_SINK", "ai_aec_sink")
 
-        # capture state — `input_stream` mirrors the sounddevice attr the overlay bridge checks for "listening"
+        # capture state: `input_stream` mirrors the sounddevice attr the overlay bridge checks for "listening"
         self.input_stream: object | None = None
         self._rec_proc: subprocess.Popen | None = None
         self._reader: threading.Thread | None = None
@@ -85,7 +85,7 @@ class PipeWireAudioIO:
         """Load WebRTC module-echo-cancel (named ai_aec_*) unless those nodes already exist. Reversible."""
         if self._node_exists(self._src):
             self._aec_ok = True
-            logger.info("AEC source '{}' already present — reusing it", self._src)
+            logger.info("AEC source '{}' already present, reusing it", self._src)
             return
         cmd = (
             "load-module libpipewire-module-echo-cancel "

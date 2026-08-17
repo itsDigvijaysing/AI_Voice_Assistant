@@ -1,5 +1,5 @@
 // Shared settings core used by BOTH extension.js and prefs.js (separate gjs processes; GLib only).
-// Storage contract: settings.json holds ONLY user-touched keys — defaults are never written back.
+// Storage contract: settings.json holds ONLY user-touched keys; defaults are never written back.
 
 import GLib from 'gi://GLib';
 
@@ -10,7 +10,7 @@ export const VOICE_PATH = GLib.build_filenamev([RUNTIME_DIR, 'voice.json']);
 export const SETTINGS_DIR = GLib.build_filenamev([GLib.get_user_config_dir(), 'ai-linux']);
 export const SETTINGS_PATH = GLib.build_filenamev([SETTINGS_DIR, 'settings.json']);
 
-// think:true mirrors the config default (llm_think: true — reasoning is required for reliable
+// think:true mirrors the config default (llm_think: true, reasoning is required for reliable
 // tool-calling on qwen3).
 export const SETTINGS_DEFAULTS = {
     model: 'qwen3:4b', think: true, wake_word: 'computer',
@@ -23,7 +23,7 @@ export const MODELS = [
     {id: 'qwen3:4b', label: 'Smart (qwen3:4b)'},
     {id: 'qwen3:1.7b', label: 'Fast (qwen3:1.7b)'},
 ];
-// Curated: Computer (most STT-robust, the default), Jarvis (distinct, reliable), AI (short — least
+// Curated: Computer (most STT-robust, the default), Jarvis (distinct, reliable), AI (short, least
 // reliable for speech-to-text but on-brand), plus always-on and click-to-talk. Assistant/Hey Linux dropped.
 export const WAKE_WORDS = [
     {id: 'computer', label: 'Computer (recommended)'}, {id: 'jarvis', label: 'Jarvis'},

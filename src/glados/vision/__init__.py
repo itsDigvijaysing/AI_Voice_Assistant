@@ -1,6 +1,6 @@
 """Vision processing components."""
 
-# FastVLM and VisionProcessor pull in cv2, so they are imported lazily (PEP 562) — the package and
+# FastVLM and VisionProcessor pull in cv2, so they are imported lazily (PEP 562), the package and
 # core.engine load without opencv when vision is disabled. Lightweight symbols stay eager.
 from .vision_config import VisionConfig
 from .vision_request import VisionRequest

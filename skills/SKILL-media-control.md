@@ -2,10 +2,10 @@
 name: control-media-playback
 trigger: user asks to play, pause, resume, stop, skip, next track, previous track, or go back on music or video that is playing
 tools: [mcp.shell.run_command]
-requires: playerctl — installed by `./ai-linux setup`. If missing, say so.
+requires: playerctl, installed by `./ai-linux setup`. If missing, say so.
 ---
 
-Control whatever media player is running (Spotify, browser, VLC, GNOME Music — anything MPRIS) via mcp.shell.run_command. If `command -v playerctl` is empty, tell the user it is not installed (run `./ai-linux setup`) and don't pretend it worked.
+Control whatever media player is running (Spotify, browser, VLC, GNOME Music, anything MPRIS) via mcp.shell.run_command. If `command -v playerctl` is empty, tell the user it is not installed (run `./ai-linux setup`) and don't pretend it worked.
 
 - Play / pause toggle: `playerctl play-pause`
 - Next track:         `playerctl next`

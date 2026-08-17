@@ -1,4 +1,4 @@
-# Reference clones — study/mine only, NEVER committed
+# Reference clones, study/mine only, NEVER committed
 refs/
 
 # Python bytecode cache
@@ -30,7 +30,7 @@ docs/*
 MD/*
 .claude/
 
-# Local secrets (API tokens etc.) — copy .env.example to .env and fill in real values
+# Local secrets (API tokens etc.), copy .env.example to .env and fill in real values
 .env
 
 # Ruff lint cache

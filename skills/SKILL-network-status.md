@@ -2,7 +2,7 @@
 name: network-status
 trigger: user asks about the network, internet connection, wifi, am i online, what network am i on, my IP address, or whether the internet is working
 tools: [mcp.shell.run_command]
-requires: NetworkManager + coreutils (nmcli/ping/hostname) — present on Ubuntu 26.04; user-level, no sudo
+requires: NetworkManager + coreutils (nmcli/ping/hostname), present on Ubuntu 26.04; user-level, no sudo
 ---
 
 Check network state via mcp.shell.run_command (no sudo), then tell the user plainly (not raw output):
